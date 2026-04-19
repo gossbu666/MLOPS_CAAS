@@ -159,7 +159,7 @@ with st.sidebar:
     st.write(f"{champion}")
 
     st.markdown("---")
-    if st.button("Refresh data", width="stretch"):
+    if st.button("Refresh data", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
@@ -360,7 +360,7 @@ with tab_public:
                 "PM2.5 (µg/m³)": ["0 – 15", "15 – 25", "25 – 37.5", "37.5 – 50", "50 – 75", "> 75"],
             }
         )
-        st.dataframe(legend, hide_index=True, width="stretch")
+        st.dataframe(legend, hide_index=True, use_container_width=True)
 
 
 # =========================================================
@@ -398,7 +398,7 @@ with tab_model:
                     "Level (champion)": level_from_pm25(lgb_val),
                 }
             )
-        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
     # Metrics table for selected model
     st.markdown(f"#### Test metrics — {model_choice}")
@@ -420,7 +420,7 @@ with tab_model:
                         "Alert AUROC": f"{alert.get('auroc', float('nan')):.3f}",
                     }
                 )
-            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
         else:
             st.info("Metrics not available from `/model/info`.")
     else:
@@ -485,7 +485,7 @@ with tab_model:
 
             st.dataframe(
                 df_drift.style.map(_style_status, subset=["Status"]),
-                hide_index=True, width="stretch",
+                hide_index=True, use_container_width=True,
             )
 
             core_feats = drift.get("core_drift_features", [])
