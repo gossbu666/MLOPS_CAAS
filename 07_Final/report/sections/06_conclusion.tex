@@ -1,0 +1,82 @@
+\chapter{Conclusion}
+\label{ch:conclusion}
+
+\section{Summary of Findings}
+
+This project designed, implemented, and deployed CAAS --- a complete end-to-end
+MLOps pipeline for PM2.5 air quality forecasting in Chiang Mai, Thailand.
+
+The principal findings are:
+
+\begin{enumerate}
+    \item \textbf{XGBoost outperforms LSTM at all three horizons.} The champion
+          XGBoost model achieves MAE of 5.31, 6.91, and 8.34~\textmu g/m\textsuperscript{3}
+          at t+1, t+3, and t+7 respectively. It is interpretable via SHAP, fast
+          to train, and more stable than the LSTM across horizons. The LSTM
+          provides competitive results at t+7 (MAE 8.06 vs.\ 8.34) but degrades
+          significantly at t+3 (R²=0.54 vs.\ 0.74), confirming that tabular
+          XGBoost with engineered features is the superior approach for this problem.
+
+    \item \textbf{NASA FIRMS fire hotspot data adds measurable value.} Removing
+          the six fire-derived features increases MAE by 4.3--6.8\% across horizons.
+          The effect is strongest at t+1, where recent hotspot counts directly
+          predict next-day PM2.5 accumulation. This validates the cost of the
+          FIRMS data integration.
+
+    \item \textbf{The predictive signal shifts with horizon.} SHAP analysis reveals
+          a clear transition: at t+1, recent PM2.5 (\texttt{pm25\_lag1}) dominates;
+          at t+3, 14-day fire accumulation (\texttt{hotspot\_14d\_roll}) is most
+          important; at t+7, seasonal position (\texttt{sin\_month}) is the
+          strongest signal. This is physically interpretable and consistent with
+          the meteorology of Chiang Mai haze events.
+
+    \item \textbf{The default 50~\textmu g/m\textsuperscript{3} alert threshold is
+          near-optimal for multi-day horizons.} Scenario~C shows that only the
+          t+1 classifier benefits meaningfully from threshold tuning
+          (53.7~\textmu g/m\textsuperscript{3}, +4.0\% F1). The standard WHO/Thai
+          threshold is well-calibrated for t+3 and t+7.
+
+    \item \textbf{The MLOps pipeline is production-ready within its design scope.}
+          Automated daily ingestion, drift monitoring with a seasonal-aware retrain
+          policy, champion/challenger validation, and Terraform-provisioned AWS
+          infrastructure together constitute a deployable, maintainable system.
+\end{enumerate}
+
+\section{Limitations}
+
+\begin{itemize}
+    \item \textbf{Single station.} CAAS currently operates on one Chiang Mai
+          monitoring station. PM2.5 varies spatially, and a network of stations
+          would provide better coverage for the population.
+    \item \textbf{Historical weather only.} The pipeline uses ERA5 reanalysis
+          weather data (accurate but historical). True production use requires
+          weather forecast inputs (e.g.\ GFS or ECMWF), which introduce their own
+          forecast uncertainty.
+    \item \textbf{LSTM underperformance at t+3.} Despite architectural improvements
+          (seq\_len=60, deeper network, BatchNorm), the LSTM R² of 0.54 at t+3
+          indicates the model struggles at the mid-range horizon. This suggests
+          the temporal sequences do not provide sufficient additional signal over
+          the tabular lag features already engineered for XGBoost.
+    \item \textbf{Sparse fire data in non-haze months.} Zero-inflation in the FIRMS
+          features during the rainy season limits PSI-based drift detection and
+          requires suppression logic. A seasonal model could handle this more
+          elegantly.
+\end{itemize}
+
+\section{Future Work}
+
+\begin{itemize}
+    \item \textbf{Multi-station expansion:} Extend to all 60+ PCD monitoring
+          stations in Thailand, enabling national-scale air quality forecasting.
+    \item \textbf{Weather forecast integration:} Replace reanalysis inputs with
+          ECMWF HRES forecast data to enable genuine real-time t+3 and t+7
+          predictions without relying on observed weather.
+    \item \textbf{Graph Neural Network:} Model spatial dependencies between
+          nearby stations using a GNN, potentially improving long-horizon
+          forecasts by propagating upstream fire signals across the network.
+    \item \textbf{Hyperparameter optimisation:} Replace manual tuning with Optuna
+          or Ray Tune to systematically search the hyperparameter space.
+    \item \textbf{Kubernetes serving:} For production deployment at scale, migrate
+          from a single EC2 instance to a Kubernetes cluster with horizontal
+          pod autoscaling.
+\end{itemize}

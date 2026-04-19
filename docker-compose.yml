@@ -1,0 +1,68 @@
+# ============================================================
+#  CAAS — local + EC2 compose stack
+#  Three co-located services:
+#    api       : FastAPI inference server          :8000
+#    dashboard : Streamlit public dashboard        :8501
+#    mlflow    : MLflow tracking UI (read-only)    :5000
+#
+#  Local usage:
+#    docker compose up --build -d
+#    curl http://localhost:8000/health
+#    open http://localhost:8501        # Streamlit
+#    open http://localhost:5000        # MLflow
+#    docker compose down
+#
+#  On EC2 (launched by terraform user_data):
+#    docker compose up --build -d
+# ============================================================
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: caas-api:latest
+    container_name: caas-api
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  dashboard:
+    image: caas-api:latest   # reuses api image (streamlit + altair already inside)
+    container_name: caas-dashboard
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      # External 8502 to avoid a collision with any other local Streamlit dev;
+      # EC2 uses same mapping for consistency.
+      - "8502:8501"
+    environment:
+      FASTAPI_URL: "http://api:8000"
+    working_dir: /app/04_Scripts/serve
+    command: >
+      streamlit run dashboard.py
+      --server.port 8501
+      --server.address 0.0.0.0
+      --server.headless true
+      --browser.gatherUsageStats false
+    restart: unless-stopped
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+    image: caas-mlflow:latest
+    container_name: caas-mlflow
+    ports:
+      # External 5001 to avoid macOS AirPlay (port 5000); EC2 uses same mapping for consistency.
+      - "5001:5000"
+    volumes:
+      - ./mlruns:/mlflow/mlruns
+    restart: unless-stopped

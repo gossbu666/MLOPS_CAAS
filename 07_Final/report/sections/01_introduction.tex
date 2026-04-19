@@ -1,0 +1,57 @@
+\chapter{Introduction}
+\label{ch:introduction}
+
+\section{Problem Statement}
+
+Chiang Mai, Thailand, experiences severe seasonal air pollution events driven by
+agricultural burning and forest fires between February and April each year.
+PM2.5 concentrations routinely exceed 150~\textmu g/m\textsuperscript{3} during
+haze season --- more than six times the WHO guideline of 15~\textmu g/m\textsuperscript{3}
+and three times Thailand's national standard of 50~\textmu g/m\textsuperscript{3}.
+The health impact is substantial: elevated PM2.5 is associated with respiratory
+disease, cardiovascular events, and premature mortality, placing particular burden
+on children, the elderly, and outdoor workers.
+
+Despite the severity of the problem, no publicly accessible automated forecasting
+service provides Chiang Mai residents with reliable multi-day PM2.5 predictions.
+Current government monitoring (air4thai, PCD Thailand) reports measured values
+but does not forecast future concentrations or issue advance hazard warnings,
+leaving citizens unable to plan protective behaviour.
+
+\section{Objectives}
+
+This project --- the \textbf{ChiangMai Air Quality Alert System (CAAS)} ---
+addresses this gap by building a complete, end-to-end MLOps pipeline that:
+
+\begin{enumerate}
+    \item \textbf{Forecasts PM2.5} at three horizons: next day (t+1), three days ahead (t+3),
+          and seven days ahead (t+7), using 15 years of historical data (2011--2025).
+    \item \textbf{Issues binary hazard alerts} when PM2.5 is forecast to exceed
+          50~\textmu g/m\textsuperscript{3}, enabling early protective action.
+    \item \textbf{Integrates NASA FIRMS fire hotspot data} alongside meteorological
+          variables to capture the dominant driver of seasonal PM2.5 spikes.
+    \item \textbf{Deploys as a production-grade MLOps pipeline} with automated
+          data ingestion, drift monitoring, champion/challenger model governance,
+          and CI/CD-triggered retraining.
+\end{enumerate}
+
+\section{Contributions}
+
+The key contributions of this project are:
+
+\begin{itemize}
+    \item A 45-feature dataset spanning 5,257 days (2011--2025), merging three
+          heterogeneous sources: PCD PM2.5 measurements, Open-Meteo weather
+          reanalysis, and NASA FIRMS fire hotspot counts.
+    \item An XGBoost champion model achieving MAE of 5.31, 6.91, and
+          8.34~\textmu g/m\textsuperscript{3} at t+1, t+3, and t+7 respectively,
+          with AUROC~$\geq$~0.96 across all horizons.
+    \item A SHAP-based interpretability analysis demonstrating that the dominant
+          predictive signal shifts from recent PM2.5 lags (short horizons) to
+          fire hotspot accumulation and seasonal position (longer horizons).
+    \item An ablation study quantifying the contribution of FIRMS fire data:
+          removing six fire-derived features degrades MAE by 4.3--6.8\% across horizons.
+    \item A complete MLOps stack: FastAPI inference service, Streamlit monitoring
+          dashboard, Evidently drift monitoring with automated GitHub Actions
+          retraining triggers, and Terraform-provisioned AWS infrastructure.
+\end{itemize}

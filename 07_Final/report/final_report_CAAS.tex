@@ -1,0 +1,77 @@
+% ============================================================
+%  CAAS — Final Project Report
+%  AT82.9002 Data Engineering and MLOps, AIT
+%  Supanut Kompayak (st126055) · Shuvam Shrestha (st125975)
+% ============================================================
+\documentclass[11pt,a4paper]{report}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\lstset{basicstyle=\ttfamily\small, breaklines=true, extendedchars=false}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{longtable}
+\usepackage{url}
+
+\graphicspath{{figures/}{../../01_Proposal/}}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue
+}
+
+\title{CAAS: ChiangMai Air Quality Alert System \\
+       \large An End-to-End MLOps Pipeline for PM2.5 Forecasting}
+\author{Supanut Kompayak (st126055) \and Shuvam Shrestha (st125975) \\
+        AT82.9002 Data Engineering and MLOps \\
+        Asian Institute of Technology}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+\begin{abstract}
+Chiang Mai, Thailand experiences severe annual PM2.5 pollution events driven by
+agricultural burning, with concentrations frequently exceeding the WHO 24-hour
+guideline of 15~\textmu g/m\textsuperscript{3} by an order of magnitude.
+This report presents CAAS (ChiangMai Air Quality Alert System), a production-grade
+end-to-end MLOps pipeline for multi-horizon PM2.5 forecasting and binary hazard
+alerting (PM2.5 $>$ 50~\textmu g/m\textsuperscript{3}).
+CAAS integrates three data sources --- PCD Thailand PM2.5 measurements,
+Open-Meteo ERA5 weather reanalysis, and NASA FIRMS satellite fire hotspot data ---
+into a 45-feature daily time-series matrix spanning 2011--2025.
+An XGBoost champion model outperforms an LSTM comparison model at all forecast
+horizons, achieving MAE of 5.31, 6.91, and 8.34~\textmu g/m\textsuperscript{3}
+at t+1, t+3, and t+7 days respectively (R\textsuperscript{2} = 0.824 / 0.736 / 0.612,
+AUROC = 0.991 / 0.976 / 0.959 on the 2024--2025 test set).
+SHAP analysis reveals a physically interpretable shift in dominant features:
+recent PM2.5 persistence (t+1), 14-day fire accumulation (t+3), and seasonal
+calendar position (t+7).
+The MLOps stack --- MLflow experiment tracking, FastAPI inference, Evidently
+drift monitoring, and Terraform-provisioned AWS infrastructure orchestrated by
+GitHub Actions --- constitutes a deployable, self-retraining system operating
+at approximately \$0.55/day.
+\end{abstract}
+
+\input{sections/01_introduction}
+\input{sections/02_data_engineering}
+\input{sections/03_ml_development}
+\input{sections/04_mlops}
+\input{sections/05_performance_analysis}
+\input{sections/06_conclusion}
+\input{sections/07_references}
+\input{sections/08_appendix}
+
+\end{document}

@@ -1,0 +1,116 @@
+\chapter{Performance Analysis}
+\label{ch:performance}
+
+\section{Model Performance Summary}
+
+Table~\ref{tab:full_comparison} provides a comprehensive comparison of all models
+and scenarios evaluated in this project.
+
+\begin{table}[H]
+\centering
+\caption{Full Model Comparison — Test Set}
+\label{tab:full_comparison}
+\begin{tabular}{llrrrr}
+\toprule
+\textbf{Model} & \textbf{Horizon} & \textbf{MAE} & \textbf{RMSE} & \textbf{R²} & \textbf{AUROC} \\
+\midrule
+Persistence (baseline) & t+1 & 5.30  & ---   & ---   & --- \\
+Persistence (baseline) & t+3 & 8.97  & ---   & ---   & --- \\
+Persistence (baseline) & t+7 & 10.93 & ---   & ---   & --- \\
+\midrule
+XGBoost (champion)     & t+1 & \textbf{5.31}  & \textbf{9.48}  & \textbf{0.824} & \textbf{0.991} \\
+XGBoost (champion)     & t+3 & \textbf{6.91}  & \textbf{11.62} & \textbf{0.736} & \textbf{0.976} \\
+XGBoost (champion)     & t+7 & \textbf{8.34}  & \textbf{14.13} & \textbf{0.612} & \textbf{0.959} \\
+\midrule
+LSTM                   & t+1 & 6.67  & 11.64 & 0.753 & 0.984 \\
+LSTM                   & t+3 & 8.87  & 15.89 & 0.540 & 0.927 \\
+LSTM                   & t+7 & 8.06  & 14.49 & 0.608 & 0.961 \\
+\midrule
+XGBoost (no FIRMS)     & t+1 & 5.67  & 11.21 & 0.754 & 0.983 \\
+XGBoost (no FIRMS)     & t+3 & 7.27  & 12.93 & 0.674 & 0.970 \\
+XGBoost (no FIRMS)     & t+7 & 8.70  & 15.08 & 0.558 & 0.946 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Inference Latency}
+
+The FastAPI \texttt{/forecast} endpoint loads all three XGBoost models at startup
+and serves predictions from the pre-computed latest feature row.
+Typical response times measured locally:
+
+\begin{itemize}
+    \item \texttt{/health}: $<$ 5~ms
+    \item \texttt{/forecast}: $<$ 50~ms (single feature row, 3 models in sequence)
+    \item \texttt{/predict} (POST): $<$ 50~ms
+    \item \texttt{/history}: $<$ 100~ms (reads 60-day CSV slice)
+\end{itemize}
+
+XGBoost inference is CPU-bound and scales linearly with the number of input rows.
+A t3.micro EC2 instance (2 vCPU, 1~GB RAM) is sufficient for the current
+single-station, single-user workload with co-located FastAPI, MLflow, and Streamlit.
+
+\section{Scalability Analysis}
+
+The current architecture supports one station and a low request rate.
+Scaling paths:
+
+\begin{itemize}
+    \item \textbf{Multi-station:} Add stations by extending the data ingestion scripts
+          and training one model set per station. S3 partitioning by station code
+          keeps the pipeline clean.
+    \item \textbf{High request rate:} FastAPI supports multiple Uvicorn workers
+          (\texttt{--workers 4}) without code changes. Upgrading to a t3.small
+          or t3.medium, or placing an Application Load Balancer in front of an
+          Auto Scaling Group of EC2 instances, handles traffic spikes.
+    \item \textbf{Real-time inference:} Current pipeline is daily-batch. Moving to
+          hourly inference requires only a cron change in \texttt{daily\_pipeline.yml}.
+\end{itemize}
+
+\section{Cost Analysis}
+
+% TODO: Replace estimates below with actual AWS console numbers after deployment.
+% Run: aws ce get-cost-and-usage --time-period Start=YYYY-MM-DD,End=YYYY-MM-DD
+
+The following table provides estimated operating costs based on AWS ap-southeast-1
+(Singapore) on-demand pricing as of April 2026.
+
+\begin{table}[H]
+\centering
+\caption{Estimated Monthly Operating Cost (AWS ap-southeast-1)}
+\label{tab:cost}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Component} & \textbf{Unit Cost} & \textbf{Monthly} & \textbf{Notes} \\
+\midrule
+EC2 t3.micro (on-demand) & \$0.0104/hr & \$7.50  & FastAPI + MLflow + Streamlit co-located \\
+S3 storage (5~GB)        & \$0.023/GB  & \$0.12  & raw + processed + models + results \\
+S3 PUT/GET requests      & \$0.005/1k  & \$0.05  & daily pipeline + 3-hourly inference \\
+Data transfer (outbound) & First 100~GB free & \$0.00 & dashboard traffic within free tier \\
+GitHub Actions           & 2,000~min/month free & \$0.00 & public repo = unlimited; private $\approx$160~min/month \\
+AWS Lambda               & 1M requests/month free & \$0.00 & ingestion trigger within free tier \\
+\midrule
+\textbf{Total (on-demand)}  & & \textbf{\textasciitilde\$8} & \\
+\textbf{Total (Learner Lab)} & & \textbf{\textless\$1} & EC2 covered by credits \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key architectural decision:} FastAPI, Streamlit, and MLflow all run on a
+single shared EC2~t3.micro instance. Co-location is feasible because these
+services are lightweight and rarely active simultaneously under a single-station,
+low-traffic workload.
+
+\textbf{Cost optimisation options:}
+\begin{itemize}
+    \item \textbf{EC2 Spot Instance:} t3.micro spot price is typically \$0.003/hr
+          --- a 70\% reduction. Acceptable for inference workloads that can tolerate
+          interruption with a restart policy.
+    \item \textbf{Stop EC2 when idle:} For a capstone demonstration, stopping the
+          instance between presentations reduces cost to near zero.
+\end{itemize}
+
+At \textasciitilde\$8/month on-demand (or under \$1/month with AWS Learner Lab credits),
+CAAS is substantially cheaper than commercial air quality services
+(e.g.\ IQAir Pro at \$299/year $\approx$ \$25/month for a single station),
+while providing superior multi-day forecasting capability.

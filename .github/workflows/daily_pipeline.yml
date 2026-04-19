@@ -1,0 +1,80 @@
+name: CAAS Pipeline
+
+# Runs every 3 hours so forecasts stay fresh throughout the day.
+# The Open-Meteo forecast API provides today's weather without the
+# ~5-day ERA5 lag, enabling near-real-time t+1/t+3/t+7 predictions.
+#
+# Drift monitoring runs separately in drift_check.yml (once per day).
+on:
+  schedule:
+    - cron: "0 */3 * * *"   # Every 3 hours: 00/03/06/09/12/15/18/21 UTC
+  workflow_dispatch:         # Allow manual trigger
+
+# Prevent overlapping runs — wait for the previous one to finish.
+concurrency:
+  group: caas-pipeline
+  cancel-in-progress: false
+
+jobs:
+  ingest-and-predict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create .env from GitHub Secrets
+        run: |
+          echo "FIRMS_MAP_KEY=${{ secrets.FIRMS_MAP_KEY }}" >> .env
+          echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> .env
+          echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
+          echo "AWS_REGION=${{ secrets.AWS_REGION }}" >> .env
+          echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}" >> .env
+
+      # ── Step 1: Data Ingestion ──────────────────────────────────
+      - name: "[1/4] Fetch latest PM2.5 from air4thai"
+        run: python 04_Scripts/fetch_pm25_live.py
+        continue-on-error: false
+
+      - name: "[1/4] Fetch weather via Open-Meteo forecast API"
+        # Forecast mode: past 2 days + next 8 days — no ERA5 lag.
+        # Today's weather is available immediately, enabling accurate
+        # feature rows for inference without waiting for reanalysis.
+        run: python 04_Scripts/fetch_weather.py --mode forecast
+
+      - name: "[1/4] Fetch fire hotspots from NASA FIRMS"
+        run: python 04_Scripts/fetch_firms.py
+        env:
+          FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+
+      # ── Step 2: Feature Engineering ─────────────────────────────
+      - name: "[2/4] Rebuild feature matrix"
+        run: python 04_Scripts/build_features.py
+
+      # ── Step 3: Run Inference ────────────────────────────────────
+      - name: "[3/4] Generate forecasts (t+1, t+3, t+7)"
+        run: python 04_Scripts/run_inference.py
+
+      # ── Step 4: Upload to S3 ─────────────────────────────────────
+      - name: "[4/4] Upload results to S3"
+        run: python 04_Scripts/upload_to_s3.py
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION:            ${{ secrets.AWS_REGION }}
+          S3_BUCKET_NAME:        ${{ secrets.S3_BUCKET_NAME }}
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::CAAS pipeline failed at $(date -u '+%Y-%m-%d %H:%M UTC'). Check logs above."

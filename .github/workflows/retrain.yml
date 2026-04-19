@@ -1,0 +1,124 @@
+name: CAAS Retraining Pipeline
+
+# Triggered by:
+# 1. Annual cron (December 1 — pre-haze-season retrain)
+# 2. Manual trigger (workflow_dispatch)
+# 3. Drift alert webhook (repository_dispatch from monitoring script)
+on:
+  schedule:
+    - cron: "0 1 1 12 *"    # December 1 at 08:00 Bangkok time (01:00 UTC)
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for manual retrain"
+        required: false
+        default: "Manual trigger"
+  repository_dispatch:
+    types: [drift-alert]     # Triggered by evidently_report.py via GitHub API
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log trigger reason
+        run: |
+          echo "Retrain triggered at $(date)"
+          echo "Reason: ${{ github.event.inputs.reason || github.event.action || 'scheduled' }}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create .env from GitHub Secrets
+        run: |
+          echo "FIRMS_MAP_KEY=${{ secrets.FIRMS_MAP_KEY }}"           >> .env
+          echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}"   >> .env
+          echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
+          echo "AWS_REGION=${{ secrets.AWS_REGION }}"                 >> .env
+          echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}"         >> .env
+          echo "MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}" >> .env
+
+      # ── Stage 1: Data Snapshot ──────────────────────────
+      - name: "[1/6] data-snapshot — Pull and validate latest data"
+        id: data_snapshot
+        run: |
+          python 04_Scripts/parse_pm25.py
+          python 04_Scripts/fetch_weather.py
+          FIRMS_MAP_KEY=${{ secrets.FIRMS_MAP_KEY }} python 04_Scripts/fetch_firms.py
+          echo "data_ok=true" >> $GITHUB_OUTPUT
+
+      # ── Stage 2: Feature Build ──────────────────────────
+      - name: "[2/6] feature-build — Rebuild feature matrix"
+        id: feature_build
+        run: |
+          python 04_Scripts/build_features.py
+          echo "features_ok=true" >> $GITHUB_OUTPUT
+
+      # ── Stage 3: Model Training ─────────────────────────
+      - name: "[3/6] model-train — Train XGBoost candidates"
+        id: model_train
+        run: |
+          python 04_Scripts/train_xgboost.py
+          echo "xgb_ok=true" >> $GITHUB_OUTPUT
+
+      - name: "[3/6] model-train — Train LSTM candidates"
+        run: python 04_Scripts/train_lstm.py
+        continue-on-error: true    # LSTM failure doesn't block XGBoost promotion
+
+      # ── Stage 4: VALIDATION GATE (BLOCKING) ────────────
+      - name: "[4/6] validation-gate — Compare candidate vs champion"
+        id: validation_gate
+        run: |
+          python 04_Scripts/validate_candidate.py \
+            --min-mae-improvement 0.05 \
+            --min-alert-f1 0.75 \
+            --validation-window-days 90
+        # This script exits with code 1 if candidate fails gate → pipeline stops here
+
+      # ── Stage 5: MLflow Registration ───────────────────
+      - name: "[5/6] mlflow-register — Promote candidate to Production"
+        if: steps.validation_gate.outcome == 'success'
+        run: |
+          python 04_Scripts/promote_model.py \
+            --from Staging \
+            --to Production \
+            --archive-champion
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+
+      # ── Stage 6: Deploy ─────────────────────────────────
+      - name: "[6/6] deploy — Restart FastAPI on EC2 with new model"
+        if: steps.validation_gate.outcome == 'success'
+        run: |
+          # SSH into EC2 and reload FastAPI
+          echo "${{ secrets.EC2_SSH_KEY }}" > /tmp/ec2_key.pem
+          chmod 600 /tmp/ec2_key.pem
+          ssh -o StrictHostKeyChecking=no \
+              -i /tmp/ec2_key.pem \
+              ubuntu@${{ secrets.EC2_HOST }} \
+              "cd ~/caas && git pull && sudo systemctl restart caas-api"
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+
+      # ── Outcome Summary ─────────────────────────────────
+      - name: Report outcome
+        if: always()
+        run: |
+          if [ "${{ steps.validation_gate.outcome }}" == "success" ]; then
+            echo "✅ New model promoted to Production and deployed."
+          elif [ "${{ steps.validation_gate.outcome }}" == "failure" ]; then
+            echo "⛔ Candidate model failed validation gate. Champion unchanged."
+            echo "::warning::Validation gate blocked promotion. Review MLflow Staging runs."
+          else
+            echo "ℹ️ Pipeline did not reach validation gate."
+          fi

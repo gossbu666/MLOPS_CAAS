@@ -1,0 +1,84 @@
+{
+  "timestamp": "2026-04-19T23:59:41.845237",
+  "window_days": 30,
+  "psi_drift": true,
+  "ks_drift": true,
+  "mae_flag": false,
+  "retrain_needed": true,
+  "core_drift_count": 2,
+  "soft_drift_count": 2,
+  "core_drift_features": [
+    "pm25_lag1",
+    "pm25_roll7_mean"
+  ],
+  "soft_drift_features": [
+    "hotspot_50km",
+    "wind_speed"
+  ],
+  "seasonal_reference_rows": 353,
+  "policy": {
+    "min_core_drift_flags": 2,
+    "moderate_rule": "core>=1 and soft>=2",
+    "non_trigger_features": [
+      "is_haze_season"
+    ],
+    "zero_inflation_threshold": 0.8
+  },
+  "features": [
+    {
+      "feature": "pm25_lag1",
+      "psi": 10.5191,
+      "psi_flag": true,
+      "ks_stat": 0.375,
+      "ks_p": 0.0003,
+      "ks_flag": true,
+      "ks_reference": "global",
+      "zero_inflated": false,
+      "contributes_to_trigger": true
+    },
+    {
+      "feature": "wind_speed",
+      "psi": 2.0497,
+      "psi_flag": true,
+      "ks_stat": 0.1404,
+      "ks_p": 0.5944,
+      "ks_flag": false,
+      "ks_reference": "seasonal",
+      "zero_inflated": false,
+      "contributes_to_trigger": true
+    },
+    {
+      "feature": "hotspot_50km",
+      "psi": 1.7638,
+      "psi_flag": true,
+      "ks_stat": 0.0948,
+      "ks_p": 0.9428,
+      "ks_flag": false,
+      "ks_reference": "seasonal",
+      "zero_inflated": false,
+      "contributes_to_trigger": true
+    },
+    {
+      "feature": "pm25_roll7_mean",
+      "psi": 12.3575,
+      "psi_flag": true,
+      "ks_stat": 0.441,
+      "ks_p": 0.0,
+      "ks_flag": true,
+      "ks_reference": "global",
+      "zero_inflated": false,
+      "contributes_to_trigger": true
+    },
+    {
+      "feature": "is_haze_season",
+      "psi": 0.0,
+      "psi_flag": false,
+      "ks_stat": 0.0,
+      "ks_p": 1.0,
+      "ks_flag": false,
+      "ks_reference": "seasonal",
+      "zero_inflated": false,
+      "contributes_to_trigger": false
+    }
+  ]
+}

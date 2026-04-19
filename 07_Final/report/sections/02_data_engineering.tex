@@ -1,0 +1,125 @@
+\chapter{Data Engineering}
+\label{ch:data-engineering}
+
+\section{Data Sources}
+
+CAAS ingests data from three independent sources:
+
+\textbf{1. PM2.5 Measurements — PCD Thailand.}
+Daily PM2.5 concentration data for Chiang Mai stations 35T and 36T was obtained
+from the Pollution Control Department's air4thai portal, covering 2011--2025.
+Historical data was provided as Excel files; live daily updates are fetched via
+the air4thai JSON API (\texttt{fetch\_pm25\_live.py}).
+
+\textbf{2. Meteorological Data — Open-Meteo.}
+Historical and forecast weather variables were obtained from the Open-Meteo API,
+an open-access service providing ERA5-quality reanalysis data at daily resolution.
+Variables collected include temperature (max/min/mean), humidity (max/min),
+precipitation, wind speed, wind direction, surface pressure, cloud cover, and
+evapotranspiration (\texttt{fetch\_weather.py}).
+
+\textbf{3. Fire Hotspot Data — NASA FIRMS.}
+Daily fire hotspot counts within 50~km and 100~km radii of Chiang Mai were
+obtained from the NASA FIRMS API (VIIRS/SNPP satellite product). For each
+hotspot radius, mean Fire Radiative Power (FRP) was also extracted as a proxy
+for fire intensity. Historical data was batch-fetched by year
+(\texttt{run\_firms\_batched.py}); daily updates use \texttt{fetch\_firms.py}.
+
+\section{Data Ingestion Pipeline}
+
+Figure~\ref{fig:daily_pipeline} illustrates the daily ingestion workflow.
+For historical backfill, \texttt{run\_pipeline.sh} orchestrates the full sequence
+(Steps 1--4) in order. For production operation, a GitHub Actions cron job
+(\texttt{daily\_pipeline.yml}) runs every day at 06:00 Bangkok time (23:00 UTC).
+
+The ingestion pipeline:
+\begin{enumerate}
+    \item Fetches yesterday's PM2.5, weather, and FIRMS data in parallel.
+    \item Appends new rows to the consolidated CSVs, deduplicating by date.
+    \item Rebuilds the feature matrix (\texttt{build\_features.py}).
+    \item Runs inference with the current champion model.
+    \item Uploads all results to Amazon S3.
+    \item Runs the Evidently drift check and triggers retraining if thresholds are exceeded.
+\end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{fig_daily_pipeline}
+    \caption{CAAS daily data pipeline — from ingestion to drift monitoring.}
+    \label{fig:daily_pipeline}
+\end{figure}
+
+\section{Feature Engineering}
+
+The feature matrix (\texttt{build\_features.py}) produces 45 features from the
+three raw sources, grouped as follows:
+
+\begin{table}[H]
+\centering
+\caption{CAAS Feature Groups}
+\label{tab:features}
+\begin{tabular}{llr}
+\toprule
+\textbf{Group} & \textbf{Features} & \textbf{Count} \\
+\midrule
+PM2.5 lags          & pm25\_lag1/3/7/14/30                                   & 5  \\
+Rolling statistics  & roll3/7/14/30\_mean, roll7/14\_std                     & 6  \\
+Temporal encodings  & month, week, day\_of\_year, sin/cos encodings, is\_haze\_season & 8  \\
+Weather             & temp (max/min/mean), humidity (max/min), precipitation,
+                      wind speed, wind direction (sin/cos), pressure,
+                      cloud cover, evapotranspiration                        & 11 \\
+Fire (FIRMS)        & hotspot\_50km, hotspot\_100km, mean\_frp\_50km,
+                      hotspot\_7d\_roll, hotspot\_14d\_roll, fire\_flag      & 6  \\
+Alert lags          & alert\_lag1/3/7                                         & 3  \\
+Cross features      & lag1$\times$temp, lag1$\times$wind, roll7$\times$fire,
+                      precip\_flag, humidity$\times$wind                     & 5  \\
+\midrule
+\textbf{Total}      &                                                         & \textbf{45} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Key engineering decisions:
+\begin{itemize}
+    \item \textbf{No data leakage:} Lag and rolling features use only past values.
+          Target columns (pm25\_t1, pm25\_t3, pm25\_t7) are forward-shifted.
+    \item \textbf{Fire accumulation features:} 7-day and 14-day rolling hotspot
+          counts capture the cumulative smoke load better than a single-day count.
+    \item \textbf{Cyclic temporal encodings:} Month and day-of-year are encoded
+          as sine/cosine pairs to preserve calendar continuity (December-January
+          boundary).
+    \item \textbf{Cross features:} lag1$\times$temp and roll7$\times$fire capture
+          interactive effects between PM2.5 persistence and environmental conditions.
+\end{itemize}
+
+\section{Data Storage and Versioning}
+
+All data artefacts are stored in Amazon S3 with a structured prefix layout:
+
+\begin{verbatim}
+s3://caas-mlops-bucket/
+    data/raw/         ← original Excel and CSV files
+    data/processed/   ← pm25_consolidated.csv, weather, FIRMS
+    data/features/    ← features.csv (daily snapshot)
+    models/           ← xgboost_t1/3/7.json (champion models)
+    results/          ← forecasts, drift reports, summaries
+    mlflow/           ← MLflow artefacts
+\end{verbatim}
+
+S3 bucket versioning is enabled, preserving every version of model files
+and allowing rollback to any previous champion.
+
+\section{Pipeline Orchestration}
+
+Pipeline scheduling is handled by GitHub Actions:
+\begin{itemize}
+    \item \textbf{daily\_pipeline.yml} --- cron 06:00 Bangkok time, runs ingest +
+          inference + upload + drift check.
+    \item \textbf{retrain.yml} --- triggered annually (December~1) or on-demand
+          via \texttt{repository\_dispatch} from the drift monitor.
+    \item \textbf{test.yml} --- runs pytest suite on every push to main.
+\end{itemize}
+
+This architecture was chosen over Apache Airflow for simplicity within the
+capstone scope. Airflow would be appropriate for multi-team production use
+requiring finer DAG-level observability and retries.

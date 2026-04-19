@@ -1,0 +1,62 @@
+name: CAAS Tests
+
+# Runs on every push and pull request to main
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:   # Allow manual trigger from GitHub UI
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint with ruff
+        run: |
+          pip install ruff
+          ruff check 04_Scripts/ tests/ --select E,F,W --ignore E501
+        continue-on-error: true   # Lint warnings don't fail the build
+
+      - name: Generate minimal test data (features.csv)
+        run: |
+          # features.csv is too large for CI — generate a minimal version
+          # by running the feature builder on the committed raw data
+          python 04_Scripts/build_features.py || echo "build_features skipped (raw data not in repo)"
+
+      - name: Run pytest
+        run: |
+          python -m pytest tests/ -v --tb=short \
+            --ignore=tests/test_api.py \
+            -q
+        # Note: test_api.py requires model files — run locally after training
+
+      - name: Run API smoke tests (if models present)
+        run: |
+          python -m pytest tests/test_api.py -v --tb=short || \
+            echo "API tests skipped — model files not present in CI"
+        continue-on-error: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: .pytest_cache/
+          retention-days: 7

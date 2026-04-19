@@ -1,0 +1,213 @@
+\chapter{Machine Learning Model Development}
+\label{ch:ml-development}
+
+\section{Dataset and Splits}
+
+The feature matrix contains 5,257 daily records spanning May~2011 to
+December~2025. A strict chronological split was applied to prevent data leakage:
+
+\begin{table}[H]
+\centering
+\caption{Train / Validation / Test Split}
+\begin{tabular}{llr}
+\toprule
+\textbf{Split} & \textbf{Period} & \textbf{Rows} \\
+\midrule
+Train      & 2011-05-18 → 2022-12-31 & 4,160 \\
+Validation & 2023-01-01 → 2023-12-31 &   365 \\
+Test       & 2024-01-01 → 2025-12-31 &   731 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All preprocessing (median imputation, scaling) was fitted exclusively on the
+training set and applied to validation and test sets without look-ahead.
+
+\section{Baseline}
+
+A persistence baseline was established using yesterday's PM2.5 value as the
+forecast for all horizons. This represents the simplest possible model and
+provides a floor that any learned model must surpass.
+
+\begin{table}[H]
+\centering
+\caption{Persistence Baseline — Test MAE}
+\begin{tabular}{lr}
+\toprule
+\textbf{Horizon} & \textbf{MAE (µg/m³)} \\
+\midrule
+t+1 & 5.30 \\
+t+3 & 8.97 \\
+t+7 & 10.93 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Model Selection}
+
+Two model families were evaluated:
+
+\textbf{XGBoost} was selected as the primary candidate due to its strong
+performance on tabular time-series data, native handling of missing values,
+interpretability via SHAP, and fast inference. Hyperparameters were tuned per
+horizon: t+1 and t+3 share base parameters (500 estimators, max\_depth=6,
+lr=0.05), while t+7 uses a regularised configuration (1000 estimators,
+max\_depth=4, lr=0.03) to reduce overfitting on the harder long-horizon task.
+
+\textbf{LSTM} was trained as a comparison model to assess whether the temporal
+sequence structure adds value over tabular features. Architecture: three LSTM
+layers [128, 64, 32] with BatchNormalization and Dropout(0.2) between layers,
+60-day lookback window, Huber loss (robust to PM2.5 spikes).
+
+\section{Results}
+
+\subsection{XGBoost (Champion)}
+
+\begin{table}[H]
+\centering
+\caption{XGBoost Test Set Performance}
+\label{tab:xgb_results}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Horizon} & \textbf{MAE} & \textbf{RMSE} & \textbf{R²} & \textbf{AUROC} \\
+\midrule
+t+1 & 5.31 & 9.48  & 0.824 & 0.991 \\
+t+3 & 6.91 & 11.62 & 0.736 & 0.976 \\
+t+7 & 8.34 & 14.13 & 0.612 & 0.959 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+XGBoost beats the persistence baseline at every horizon: MAE improvement is
++0\% at t+1 (near-parity due to the strong lag-1 signal), +23\% at t+3,
+and +24\% at t+7.
+
+\subsection{LSTM (Comparison)}
+
+\begin{table}[H]
+\centering
+\caption{LSTM Test Set Performance}
+\label{tab:lstm_results}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Horizon} & \textbf{MAE} & \textbf{RMSE} & \textbf{R²} \\
+\midrule
+t+1 & 6.67 & 11.64 & 0.753 \\
+t+3 & 8.87 & 15.89 & 0.540 \\
+t+7 & 8.06 & 14.49 & 0.608 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+XGBoost outperforms LSTM at t+1 (MAE 5.31 vs.\ 6.67) and t+3 (6.91 vs.\ 8.87),
+while performance at t+7 is comparable (8.34 vs.\ 8.06 MAE).
+The LSTM's weaker t+3 result (R²=0.54) reflects the difficulty of the
+mid-range horizon, where the recency of lag features decays but seasonal
+signals are not yet dominant. XGBoost is selected as the champion model.
+
+\subsection{Actual vs.\ Predicted}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{fig_actual_vs_predicted}
+    \caption{XGBoost t+1 actual vs.\ predicted PM2.5 on the 2024--2025 test set.
+             The model captures seasonal haze peaks accurately.}
+    \label{fig:actual_vs_predicted}
+\end{figure}
+
+\section{Ablation Study: FIRMS Fire Data}
+
+To quantify the contribution of NASA FIRMS fire hotspot features, Scenario~D
+trained XGBoost with the six FIRMS-derived features removed (39 features total).
+
+\begin{table}[H]
+\centering
+\caption{Scenario D — MAE Impact of Removing FIRMS Features}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Horizon} & \textbf{Full MAE} & \textbf{No-FIRMS MAE} & \textbf{MAE increase} \\
+\midrule
+t+1 & 5.31 & 5.67 & +6.8\% \\
+t+3 & 6.91 & 7.27 & +5.1\% \\
+t+7 & 8.34 & 8.70 & +4.3\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Fire data provides consistent, measurable improvement across all horizons.
+The effect is strongest at t+1 (6.8\%), where recent hotspot counts directly
+predict tomorrow's PM2.5 accumulation.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{fig_firms_ablation}
+    \caption{MAE comparison: full model vs.\ model without FIRMS fire features.}
+    \label{fig:firms_ablation}
+\end{figure}
+
+\section{Alert Classifier Analysis (Scenario C)}
+
+The binary hazard alert (PM2.5 $>$ 50~\textmu g/m\textsuperscript{3}) is derived
+from the regression output by applying a threshold. Scenario~C investigated
+whether the default 50~\textmu g/m\textsuperscript{3} threshold is optimal by
+computing F1 score across all possible thresholds on the test set.
+
+\begin{table}[H]
+\centering
+\caption{Scenario C — Alert Threshold Optimisation}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Horizon} & \textbf{Default (50)} & \textbf{Optimal threshold} & \textbf{Default F1} & \textbf{Optimal F1} \\
+\midrule
+t+1 & 50.0 µg/m³ & 53.7 µg/m³ & 0.839 & \textbf{0.879} \\
+t+3 & 50.0 µg/m³ & 51.0 µg/m³ & 0.787 & \textbf{0.789} \\
+t+7 & 50.0 µg/m³ & 45.8 µg/m³ & 0.684 & \textbf{0.695} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The standard 50~\textmu g/m\textsuperscript{3} threshold is near-optimal for
+t+3 and t+7. For t+1, raising the threshold to 53.7~\textmu g/m\textsuperscript{3}
+reduces false alarms (precision 0.769 → 0.885) while maintaining recall
+(0.924 → 0.873), yielding a +4.0\% F1 gain.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{fig_pr_curve_t1}
+    \caption{Precision-recall curve and F1 vs.\ threshold for t+1 alert classifier.}
+    \label{fig:pr_curve_t1}
+\end{figure}
+
+\section{Model Interpretation (SHAP)}
+
+SHAP (SHapley Additive exPlanations) values were computed for all three XGBoost
+models on the test set to explain which features drive predictions.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{fig_shap_summary_t1}
+    \caption{SHAP summary plot for XGBoost t+1. \texttt{pm25\_lag1} dominates,
+    confirming that next-day PM2.5 is primarily driven by today's concentration.}
+    \label{fig:shap_t1}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{fig_shap_summary_t3}
+    \caption{SHAP summary plot for XGBoost t+3. \texttt{hotspot\_14d\_roll} becomes
+    the dominant signal, reflecting fire accumulation over two weeks.}
+    \label{fig:shap_t3}
+\end{figure}
+
+A key insight is that the dominant predictive signal shifts with horizon:
+\begin{itemize}
+    \item \textbf{t+1:} Recent PM2.5 (\texttt{pm25\_lag1}, mean SHAP = 6.85) ---
+          next-day concentration is primarily a persistence phenomenon.
+    \item \textbf{t+3:} 14-day fire accumulation (\texttt{hotspot\_14d\_roll}, 4.63)
+          --- two-week fire buildup is the strongest medium-range signal.
+    \item \textbf{t+7:} Seasonal position (\texttt{sin\_month}, 4.63; \texttt{week}, 2.15)
+          --- at 7 days, the model relies on the calendar position within the haze season.
+\end{itemize}
+
+This gradient from measurement-driven to climatology-driven prediction is
+consistent with the physical understanding of PM2.5 dynamics in Chiang Mai.

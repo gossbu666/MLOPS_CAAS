@@ -1,0 +1,17 @@
+# ============================================================
+#  CAAS — MLflow Tracking Server (compose service)
+#  Minimal image: python:3.11-slim + mlflow 2.15.1
+#  Serves /mlflow/mlruns (mounted volume) on port 5000.
+# ============================================================
+
+FROM python:3.11-slim
+
+RUN pip install --no-cache-dir mlflow==2.15.1
+
+EXPOSE 5000
+
+CMD ["mlflow", "server", \
+     "--host", "0.0.0.0", \
+     "--port", "5000", \
+     "--backend-store-uri", "file:/mlflow/mlruns", \
+     "--default-artifact-root", "file:/mlflow/mlruns"]

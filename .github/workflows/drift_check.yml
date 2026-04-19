@@ -1,0 +1,68 @@
+name: CAAS Drift Check
+
+# Runs once per day at 23:00 UTC (06:00 Bangkok, after overnight data settles).
+# Evaluates feature drift and triggers retraining when thresholds are exceeded.
+# Separated from the 3-hourly pipeline to avoid 8x/day redundant drift checks.
+on:
+  schedule:
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: caas-drift-check
+  cancel-in-progress: false
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create .env from GitHub Secrets
+        run: |
+          echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> .env
+          echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
+          echo "AWS_REGION=${{ secrets.AWS_REGION }}" >> .env
+          echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}" >> .env
+
+      - name: Download latest data from S3
+        run: |
+          aws s3 sync s3://${{ secrets.S3_BUCKET_NAME }}/data/processed/ \
+            03_Data/processed/ --quiet
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION:            ${{ secrets.AWS_REGION }}
+
+      - name: Run Evidently drift check
+        run: python 04_Scripts/monitoring/evidently_report.py --trigger-retrain
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Upload drift report to S3
+        if: always()
+        run: |
+          aws s3 sync 03_Data/results/drift_reports/ \
+            s3://${{ secrets.S3_BUCKET_NAME }}/results/drift_reports/ --quiet
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION:            ${{ secrets.AWS_REGION }}
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::CAAS drift check failed at $(date -u '+%Y-%m-%d %H:%M UTC')."

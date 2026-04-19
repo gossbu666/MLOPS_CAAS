@@ -1,0 +1,119 @@
+{
+  "t1": {
+    "horizon": "t1",
+    "best_params": {
+      "arch": "attention",
+      "seq_len": 7,
+      "hidden_units": 128,
+      "num_layers": 1,
+      "dropout": 0.25257120734941085,
+      "learning_rate": 0.0021907142272152816,
+      "batch_size": 64
+    },
+    "best_val_mae_tuning": 8.19852352142334,
+    "val": {
+      "mae": 8.949307441711426,
+      "rmse": 17.18535041809082,
+      "r2": 0.7594853639602661
+    },
+    "test": {
+      "mae": 6.787659168243408,
+      "rmse": 12.316254615783691,
+      "r2": 0.7029273509979248
+    },
+    "alert_val": {
+      "precision": 0.7466666666666667,
+      "recall": 0.8235294117647058,
+      "f1": 0.7832167832167832,
+      "auroc": 0.9654882154882155
+    },
+    "alert_test": {
+      "precision": 0.75,
+      "recall": 0.759493670886076,
+      "f1": 0.7547169811320755,
+      "auroc": 0.9672752727060608
+    },
+    "n_trials_completed": 30,
+    "study_path": "/Users/supanut.k/WORKING_DRIVE/AIT/2nd_semester/DATA ENGINEER/Proposal Presentation/04_Scripts/../03_Data/results/optuna_studies/lstm_t1.db",
+    "model_path": "/Users/supanut.k/WORKING_DRIVE/AIT/2nd_semester/DATA ENGINEER/Proposal Presentation/04_Scripts/../03_Data/models/lstm_v2_t1.keras",
+    "scaler_path": "/Users/supanut.k/WORKING_DRIVE/AIT/2nd_semester/DATA ENGINEER/Proposal Presentation/04_Scripts/../03_Data/models/lstm_v2_t1_scaler.pkl"
+  },
+  "t3": {
+    "horizon": "t3",
+    "best_params": {
+      "arch": "cnn_lstm",
+      "seq_len": 30,
+      "hidden_units": 32,
+      "num_layers": 2,
+      "dropout": 0.15230992870149745,
+      "learning_rate": 0.0010485733570643786,
+      "batch_size": 32
+    },
+    "best_val_mae_tuning": 9.282248497009277,
+    "val": {
+      "mae": 10.008874893188477,
+      "rmse": 20.448991775512695,
+      "r2": 0.659546971321106
+    },
+    "test": {
+      "mae": 8.0101900100708,
+      "rmse": 14.814497947692871,
+      "r2": 0.5713077783584595
+    },
+    "alert_val": {
+      "precision": 0.8333333333333334,
+      "recall": 0.7352941176470589,
+      "f1": 0.78125,
+      "auroc": 0.9686571598336304
+    },
+    "alert_test": {
+      "precision": 0.6060606060606061,
+      "recall": 0.5063291139240507,
+      "f1": 0.5517241379310345,
+      "auroc": 0.8937606054104659
+    },
+    "n_trials_completed": 30,
+    "study_path": "/Users/supanut.k/WORKING_DRIVE/AIT/2nd_semester/DATA ENGINEER/Proposal Presentation/04_Scripts/../03_Data/results/optuna_studies/lstm_t3.db",
+    "model_path": "/Users/supanut.k/WORKING_DRIVE/AIT/2nd_semester/DATA ENGINEER/Proposal Presentation/04_Scripts/../03_Data/models/lstm_v2_t3.keras",
+    "scaler_path": "/Users/supanut.k/WORKING_DRIVE/AIT/2nd_semester/DATA ENGINEER/Proposal Presentation/04_Scripts/../03_Data/models/lstm_v2_t3_scaler.pkl"
+  },
+  "t7": {
+    "horizon": "t7",
+    "best_params": {
+      "arch": "bidirectional",
+      "seq_len": 21,
+      "hidden_units": 96,
+      "num_layers": 2,
+      "dropout": 0.10324851450967394,
+      "learning_rate": 0.0018184612552274548,
+      "batch_size": 32
+    },
+    "best_val_mae_tuning": 10.042614936828613,
+    "val": {
+      "mae": 9.7994966506958,
+      "rmse": 20.6622371673584,
+      "r2": 0.652104914188385
+    },
+    "test": {
+      "mae": 9.163578033447266,
+      "rmse": 15.988974571228027,
+      "r2": 0.5033626556396484
+    },
+    "alert_val": {
+      "precision": 0.7222222222222222,
+      "recall": 0.7647058823529411,
+      "f1": 0.7428571428571429,
+      "auroc": 0.9696474549415726
+    },
+    "alert_test": {
+      "precision": 0.47244094488188976,
+      "recall": 0.759493670886076,
+      "f1": 0.5825242718446602,
+      "auroc": 0.9350603473653223
+    },
+    "n_trials_completed": 30,
+    "study_path": "/Users/supanut.k/WORKING_DRIVE/AIT/2nd_semester/DATA ENGINEER/Proposal Presentation/04_Scripts/../03_Data/results/optuna_studies/lstm_t7.db",
+    "model_path": "/Users/supanut.k/WORKING_DRIVE/AIT/2nd_semester/DATA ENGINEER/Proposal Presentation/04_Scripts/../03_Data/models/lstm_v2_t7.keras",
+    "scaler_path": "/Users/supanut.k/WORKING_DRIVE/AIT/2nd_semester/DATA ENGINEER/Proposal Presentation/04_Scripts/../03_Data/models/lstm_v2_t7_scaler.pkl"
+  }
+}

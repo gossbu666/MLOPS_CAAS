@@ -1,0 +1,89 @@
+{
+  "t1": {
+    "val": {
+      "mae_best_tuning": 7.713101218050462
+    },
+    "test": {
+      "mae": 5.118183463985224,
+      "rmse": 8.99978407369894,
+      "r2": 0.8413757528564376
+    },
+    "alert_test": {
+      "precision": 0.8,
+      "recall": 0.9113924050632911,
+      "f1": 0.8520710059171598,
+      "auroc": 0.9916584028466429
+    },
+    "best_params": {
+      "n_estimators": 357,
+      "num_leaves": 255,
+      "max_depth": 6,
+      "learning_rate": 0.04278764304025469,
+      "min_data_in_leaf": 13,
+      "feature_fraction": 0.520762061040214,
+      "bagging_fraction": 0.5398148332889725,
+      "reg_alpha": 0.0108834499943951,
+      "reg_lambda": 0.0026987163045245443
+    },
+    "best_val_mae_tuning": 7.713101218050462,
+    "n_trials_total": 103
+  },
+  "t3": {
+    "val": {
+      "mae_best_tuning": 9.123413877476262
+    },
+    "test": {
+      "mae": 6.765275478538575,
+      "rmse": 11.778103418891984,
+      "r2": 0.7290291702547234
+    },
+    "alert_test": {
+      "precision": 0.7126436781609196,
+      "recall": 0.7848101265822784,
+      "f1": 0.7469879518072289,
+      "auroc": 0.9731427122544908
+    },
+    "best_params": {
+      "n_estimators": 850,
+      "num_leaves": 203,
+      "max_depth": 7,
+      "learning_rate": 0.030063105001713126,
+      "min_data_in_leaf": 17,
+      "feature_fraction": 0.553427149942064,
+      "bagging_fraction": 0.633816812031989,
+      "reg_alpha": 0.011638236544148214,
+      "reg_lambda": 0.8581633730371871
+    },
+    "best_val_mae_tuning": 9.123413877476262,
+    "n_trials_total": 103
+  },
+  "t7": {
+    "val": {
+      "mae_best_tuning": 9.717605415973601
+    },
+    "test": {
+      "mae": 8.251806793048864,
+      "rmse": 14.357249028779513,
+      "r2": 0.5995571089984282
+    },
+    "alert_test": {
+      "precision": 0.7037037037037037,
+      "recall": 0.7215189873417721,
+      "f1": 0.7125,
+      "auroc": 0.9459523108625258
+    },
+    "best_params": {
+      "n_estimators": 1720,
+      "num_leaves": 190,
+      "max_depth": 6,
+      "learning_rate": 0.020550020662864522,
+      "min_data_in_leaf": 19,
+      "feature_fraction": 0.604060262377182,
+      "bagging_fraction": 0.7483499316033143,
+      "reg_alpha": 0.00014900139366798453,
+      "reg_lambda": 0.008916195593089387
+    },
+    "best_val_mae_tuning": 9.717605415973601,
+    "n_trials_total": 100
+  }
+}

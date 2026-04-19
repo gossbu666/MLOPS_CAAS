@@ -1,0 +1,56 @@
+# ============================================================
+# CAAS — .gitignore
+# ============================================================
+
+# Virtual Environment
+caas-env/
+venv/
+.env/
+
+# Environment Variables (secrets — NEVER commit!)
+.env
+.env.local
+*.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints/
+
+# MacOS
+.DS_Store
+
+# LaTeX aux files
+*.aux
+*.lof
+*.log
+*.lot
+*.out
+*.toc
+*.synctex.gz
+
+# MLflow local runs (can be large)
+mlruns/
+mlartifacts/
+
+# Data files (raw Excel — too large for git)
+03_Data/raw/
+
+# Model artifacts
+*.pkl
+*.joblib
+*.h5
+*.keras
+
+# AWS credentials
+.aws/
+credentials
+
+# IDE
+.vscode/
+.idea/

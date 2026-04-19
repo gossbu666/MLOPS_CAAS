@@ -1,0 +1,25 @@
+{
+  "station": "Chiang Mai (35T)",
+  "forecast_for": "2025-12-31",
+  "generated_at": "2026-04-09T13:30:34.837617",
+  "forecasts": {
+    "t1": {
+      "horizon_days": 1,
+      "pm25_forecast": 27.03,
+      "alert": false,
+      "alert_level": "Unhealthy for Sensitive Groups"
+    },
+    "t3": {
+      "horizon_days": 3,
+      "pm25_forecast": 25.96,
+      "alert": false,
+      "alert_level": "Unhealthy for Sensitive Groups"
+    },
+    "t7": {
+      "horizon_days": 7,
+      "pm25_forecast": 27.97,
+      "alert": false,
+      "alert_level": "Unhealthy for Sensitive Groups"
+    }
+  }
+}

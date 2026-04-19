@@ -1,0 +1,34 @@
+# ── Python / env ─────────────────────────────────
+caas-env/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# ── Training artifacts (large, not needed in API image) ──
+03_Data/models/*.keras
+03_Data/models/*_scaler.pkl
+03_Data/results/*_test_predictions.csv
+03_Data/results/drift_*.html
+03_Data/raw/
+mlruns/
+
+# ── Docs / reports ───────────────────────────────
+01_Proposal/
+02_Presentation/
+05_Reference/
+06_Handoff/
+07_Final/
+*.pdf
+*.tex
+
+# ── Dev tools ────────────────────────────────────
+.github/
+tests/
+infra/
+*.log
+nohup.out
+.env
+.env.*
+!.env.example

@@ -1,0 +1,170 @@
+\chapter{MLOps Implementation}
+\label{ch:mlops}
+
+\section{System Architecture}
+
+Figure~\ref{fig:architecture} shows the end-to-end CAAS architecture.
+Data flows from three external sources through an automated ingestion pipeline
+into a feature store (Amazon S3), is used to train and register models in
+MLflow, served via FastAPI on EC2, and monitored continuously by Evidently.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{fig_cloud_architecture}
+    \caption{CAAS cloud architecture on AWS. Three external APIs (air4thai,
+    Open-Meteo, NASA FIRMS) feed a GitHub Actions-orchestrated ingestion layer
+    (3-hourly cron) into four S3 tiers (Raw, Processed, Feature Store, Model
+    Artifacts). A single EC2~t3.micro instance hosts FastAPI, MLflow, and
+    Streamlit. Evidently AI drift monitoring runs as a daily scheduled job.}
+    \label{fig:architecture}
+\end{figure}
+
+\section{Experiment Tracking and Model Registry}
+
+All training runs are logged to MLflow with:
+\begin{itemize}
+    \item Full hyperparameter sets per horizon.
+    \item Validation and test metrics (MAE, RMSE, R², alert F1, AUROC).
+    \item Model artefacts (\texttt{.json} for XGBoost, \texttt{.keras} for LSTM).
+    \item Feature importance and prediction CSVs as run artefacts.
+\end{itemize}
+
+Three experiments are maintained: \texttt{CAAS-XGBoost} (3 runs),
+\texttt{CAAS-LSTM} (3 runs), and \texttt{CAAS-Ablation-NoFIRMS} (3 runs).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{fig_mlflow_runs}
+    \caption{MLflow experiment view showing CAAS-XGBoost runs.}
+    \label{fig:mlflow_runs}
+\end{figure}
+
+\section{Model Serving}
+
+The champion XGBoost model is served via a FastAPI application
+(\texttt{04\_Scripts/serve/app.py}) exposing five endpoints:
+
+\begin{table}[H]
+\centering
+\caption{CAAS API Endpoints}
+\begin{tabular}{llp{7cm}}
+\toprule
+\textbf{Method} & \textbf{Endpoint} & \textbf{Description} \\
+\midrule
+GET  & \texttt{/health}      & Liveness check, lists loaded models \\
+GET  & \texttt{/forecast}    & Latest t+1/3/7 forecasts from most recent feature row \\
+POST & \texttt{/predict}     & On-demand prediction from supplied feature values \\
+GET  & \texttt{/history}     & Recent PM2.5 history for dashboard charting \\
+GET  & \texttt{/model/info}  & Champion model metadata and test metrics \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The service is containerised using a multi-stage Docker build that reduces
+the image size to approximately 300~MB by excluding training and monitoring
+dependencies. On EC2, the container starts automatically via a user-data
+bootstrap script that pulls the latest model artefacts from S3 at launch.
+
+A Streamlit dashboard (\texttt{dashboard.py}) provides a public-facing
+interface showing colour-coded forecast cards, a 60-day PM2.5 history chart,
+and the model performance summary.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{fig_streamlit_dashboard}
+    \caption{CAAS Streamlit dashboard showing PM2.5 forecast cards and history.}
+    \label{fig:streamlit}
+\end{figure}
+
+\section{CI/CD Pipeline}
+
+Three GitHub Actions workflows implement the CI/CD pipeline:
+
+\textbf{test.yml} runs on every push to \texttt{main}:
+\begin{enumerate}
+    \item Install dependencies.
+    \item Lint with \texttt{ruff}.
+    \item Run 38 pytest tests covering feature schema, model inference, and API endpoints.
+\end{enumerate}
+
+\textbf{daily\_pipeline.yml} runs on cron (06:00 Bangkok time):
+\begin{enumerate}
+    \item Fetch latest PM2.5, weather, and FIRMS data.
+    \item Rebuild feature matrix.
+    \item Run inference with champion model.
+    \item Upload results to S3.
+    \item Run Evidently drift check; trigger retraining if drift thresholds are exceeded.
+\end{enumerate}
+
+\textbf{retrain.yml} triggered by drift alert or annual schedule (December~1):
+\begin{enumerate}
+    \item Full data snapshot and feature rebuild.
+    \item Train new XGBoost candidate models (all three horizons).
+    \item \textbf{Validation gate:} candidate must achieve $\geq$5\% MAE improvement
+          and alert F1 $\geq$ 0.75 over a 90-day rolling window.
+    \item If gate passes: promote via MLflow (\texttt{Staging → Production}).
+    \item Restart FastAPI on EC2 to serve the new champion.
+\end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{fig_model_promotion}
+    \caption{Champion/challenger model promotion flow with validation gate.}
+    \label{fig:model_promotion}
+\end{figure}
+
+\section{Monitoring and Drift Detection}
+
+The Evidently-based drift monitor (\texttt{monitoring/evidently\_report.py})
+runs daily and evaluates five core features using two statistical tests:
+
+\begin{itemize}
+    \item \textbf{PSI (Population Stability Index):} Detects distributional shift.
+          Threshold: PSI $>$ 0.20.
+    \item \textbf{KS test:} Two-sample Kolmogorov-Smirnov test.
+          Threshold: $p < 0.05$.
+\end{itemize}
+
+The retrain trigger policy (updated 2026-04-03) requires:
+\begin{itemize}
+    \item Immediate retrain if 7-day rolling MAE exceeds 15~\textmu g/m\textsuperscript{3}, \textbf{or}
+    \item Both core features (\texttt{pm25\_lag1}, \texttt{pm25\_roll7\_mean}) show drift, \textbf{or}
+    \item One core feature and two or more soft features show drift.
+\end{itemize}
+
+Seasonal KS references are used for \texttt{wind\_speed}, \texttt{hotspot\_50km},
+and \texttt{is\_haze\_season} to avoid spurious drift flags from expected
+seasonal variation. Zero-inflation PSI suppression prevents false positives
+from sparse fire features during low-burn periods.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{fig_drift_output}
+    \caption{Evidently drift report output (2026-04-03). Core drift detected
+    in \texttt{pm25\_lag1} and \texttt{pm25\_roll7\_mean} during December 2025 ---
+    expected seasonal behaviour, not model failure.}
+    \label{fig:drift}
+\end{figure}
+
+When drift is detected with \texttt{--trigger-retrain}, the monitor fires a
+GitHub \texttt{repository\_dispatch} event (\texttt{drift-alert}), which
+automatically triggers \texttt{retrain.yml} to begin the retraining pipeline.
+
+\section{Infrastructure as Code}
+
+All AWS infrastructure is defined in Terraform (\texttt{infra/}):
+
+\begin{itemize}
+    \item \textbf{S3 bucket} with versioning, server-side encryption (AES-256),
+          and public access block.
+    \item \textbf{IAM role and policy} granting EC2 read/write access to S3
+          without embedding credentials in code.
+    \item \textbf{Security group} opening ports 8000 (API), 5000 (MLflow), and 22 (SSH).
+    \item \textbf{EC2 t3.micro instance} with user-data bootstrap: installs Docker,
+          pulls the model artefacts from S3, and starts the FastAPI container.
+          FastAPI, Streamlit, and MLflow are co-located on this single instance.
+\end{itemize}
+
+Provisioning requires only \texttt{terraform init \&\& terraform apply}.
+\texttt{terraform destroy} cleanly removes all resources when not in use,
+avoiding unnecessary cost.

@@ -1,0 +1,35 @@
+{
+  "t1": {
+    "no_firms_mae": 6.522,
+    "no_firms_rmse": 11.208,
+    "no_firms_r2": 0.754,
+    "no_firms_recall": 0.835,
+    "no_firms_f1": 0.772,
+    "no_firms_auroc": 0.983,
+    "full_mae": 6.108,
+    "full_rmse": 10.618,
+    "mae_pct_change": 6.78
+  },
+  "t3": {
+    "no_firms_mae": 7.749,
+    "no_firms_rmse": 12.926,
+    "no_firms_r2": 0.674,
+    "no_firms_recall": 0.81,
+    "no_firms_f1": 0.744,
+    "no_firms_auroc": 0.97,
+    "full_mae": 7.373,
+    "full_rmse": 12.301,
+    "mae_pct_change": 5.1
+  },
+  "t7": {
+    "no_firms_mae": 8.802,
+    "no_firms_rmse": 15.079,
+    "no_firms_r2": 0.558,
+    "no_firms_recall": 0.709,
+    "no_firms_f1": 0.599,
+    "no_firms_auroc": 0.946,
+    "full_mae": 8.441,
+    "full_rmse": 14.449,
+    "mae_pct_change": 4.28
+  }
+}

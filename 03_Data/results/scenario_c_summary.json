@@ -1,0 +1,47 @@
+{
+  "t1": {
+    "n_samples": 730,
+    "n_alert_days": 79,
+    "auroc": 0.9912,
+    "average_precision": 0.9295,
+    "default_threshold": 50.0,
+    "default_precision": 0.7684,
+    "default_recall": 0.9241,
+    "default_f1": 0.8391,
+    "optimal_threshold": 53.72,
+    "optimal_precision": 0.8846,
+    "optimal_recall": 0.8734,
+    "optimal_f1": 0.879,
+    "f1_gain": 0.0399
+  },
+  "t3": {
+    "n_samples": 728,
+    "n_alert_days": 79,
+    "auroc": 0.9757,
+    "average_precision": 0.7732,
+    "default_threshold": 50.0,
+    "default_precision": 0.7071,
+    "default_recall": 0.8861,
+    "default_f1": 0.7865,
+    "optimal_threshold": 50.98,
+    "optimal_precision": 0.7188,
+    "optimal_recall": 0.8734,
+    "optimal_f1": 0.7886,
+    "f1_gain": 0.0021
+  },
+  "t7": {
+    "n_samples": 724,
+    "n_alert_days": 79,
+    "auroc": 0.9589,
+    "average_precision": 0.6575,
+    "default_threshold": 50.0,
+    "default_precision": 0.6974,
+    "default_recall": 0.6709,
+    "default_f1": 0.6839,
+    "optimal_threshold": 45.82,
+    "optimal_precision": 0.6019,
+    "optimal_recall": 0.8228,
+    "optimal_f1": 0.6952,
+    "f1_gain": 0.0113
+  }
+}
