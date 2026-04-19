@@ -500,6 +500,72 @@ with tab_model:
     else:
         st.info("Drift report not yet available in S3. Run the daily pipeline to populate it.")
 
+    # Fire-feature contribution across horizons
+    st.markdown("#### Fire signal contribution across horizons")
+    st.caption(
+        "Summed XGBoost gain of all NASA FIRMS-derived features "
+        "(hotspot_50km, hotspot_100km, hotspot_7d_roll, hotspot_14d_roll, fire_flag, roll7_x_fire) "
+        "at each forecast horizon. Rising contribution at longer horizons reflects "
+        "biomass-burning as a persistent driver when lag-based signals weaken."
+    )
+    fire_keywords = ("hotspot", "fire", "firms")
+    fire_rows = []
+    for h in ["t1", "t3", "t7"]:
+        df_h = fetch_s3_csv(f"results/xgboost_{h}_importance.csv")
+        if df_h is None or df_h.empty:
+            continue
+        feat_col = "feature" if "feature" in df_h.columns else df_h.columns[0]
+        imp_col = (
+            "importance" if "importance" in df_h.columns
+            else "gain" if "gain" in df_h.columns
+            else df_h.columns[1]
+        )
+        fire_mask = df_h[feat_col].str.lower().str.contains("|".join(fire_keywords), regex=True)
+        fire_sum  = float(df_h.loc[fire_mask, imp_col].sum())
+        total     = float(df_h[imp_col].sum())
+        fire_rows.append(
+            {
+                "horizon":      h,
+                "share":        fire_sum / total if total > 0 else 0.0,
+                "fire_sum":     fire_sum,
+                "non_fire":     total - fire_sum,
+            }
+        )
+
+    if fire_rows:
+        df_fire = pd.DataFrame(fire_rows)
+        fire_chart = (
+            alt.Chart(df_fire)
+            .mark_bar(color="#c1423b")
+            .encode(
+                x=alt.X("horizon:N", title="Forecast horizon", sort=["t1", "t3", "t7"]),
+                y=alt.Y("share:Q", title="FIRMS share of total gain", axis=alt.Axis(format="%")),
+                tooltip=[
+                    alt.Tooltip("horizon:N", title="Horizon"),
+                    alt.Tooltip("share:Q", title="FIRMS share", format=".1%"),
+                    alt.Tooltip("fire_sum:Q", title="Fire gain sum", format=".3f"),
+                    alt.Tooltip("non_fire:Q", title="Non-fire gain sum", format=".3f"),
+                ],
+            )
+            .properties(height=240)
+        )
+        text = fire_chart.mark_text(
+            align="center", baseline="bottom", dy=-4, fontWeight="bold"
+        ).encode(text=alt.Text("share:Q", format=".1%"))
+        st.altair_chart(fire_chart + text, use_container_width=True)
+
+        # Horizon labels with friendlier names
+        labels = {"t1": "+1 day", "t3": "+3 days", "t7": "+7 days"}
+        df_summary = df_fire.assign(
+            Horizon=df_fire["horizon"].map(labels),
+            **{"FIRMS share": df_fire["share"].map(lambda v: f"{v:.1%}")},
+            **{"Fire gain sum": df_fire["fire_sum"].map(lambda v: f"{v:.3f}")},
+            **{"Non-fire gain sum": df_fire["non_fire"].map(lambda v: f"{v:.3f}")},
+        )[["Horizon", "FIRMS share", "Fire gain sum", "Non-fire gain sum"]]
+        st.dataframe(df_summary, hide_index=True, use_container_width=True)
+    else:
+        st.info("Importance CSVs not yet available in S3 — run the training pipeline to populate them.")
+
     # Feature importance — pulled from S3
     st.markdown("#### Top features (XGBoost importance)")
     horizon_pick = st.selectbox(
