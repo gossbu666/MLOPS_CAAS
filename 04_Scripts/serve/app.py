@@ -21,13 +21,25 @@ import json
 import glob
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import xgboost as xgb
 import lightgbm as lgb
+
+BKK = ZoneInfo("Asia/Bangkok")
+
+
+def _now_iso_pair() -> tuple[str, str]:
+    """Return (utc_iso, bangkok_human) for timestamp fields."""
+    now_utc = datetime.now(timezone.utc)
+    return (
+        now_utc.isoformat().replace("+00:00", "Z"),
+        now_utc.astimezone(BKK).strftime("%Y-%m-%d %H:%M:%S %Z"),
+    )
 
 # ── Paths ──────────────────────────────────────────────────
 BASE        = os.path.dirname(os.path.abspath(__file__))
@@ -157,12 +169,14 @@ def get_alert_level(pm25: float) -> str:
 
 @app.get("/health")
 def health():
+    utc_iso, bkk_str = _now_iso_pair()
     return {
         "status": "ok",
         "champion": CHAMPION_NAME,
         "champion_horizons_loaded": list(models.keys()),
         "xgboost_horizons_loaded":  list(xgb_models.keys()),
-        "timestamp": datetime.now().isoformat(),
+        "timestamp":       utc_iso,
+        "timestamp_local": bkk_str,
     }
 
 @app.get("/forecast")
@@ -186,12 +200,14 @@ def get_forecast(model: str = "lightgbm"):
     forecast_date = latest.index[-1]
     predictions = predict_all_horizons(latest, model_kind=model)
 
+    utc_iso, bkk_str = _now_iso_pair()
     return {
-        "station":       "Chiang Mai (35T / 36T)",
-        "as_of_date":    str(forecast_date.date()),
-        "model":         model,
-        "forecasts":     predictions,
-        "generated_at":  datetime.now().isoformat(),
+        "station":            "Chiang Mai (35T / 36T)",
+        "as_of_date":         str(forecast_date.date()),
+        "model":              model,
+        "forecasts":          predictions,
+        "generated_at":       utc_iso,
+        "generated_at_local": bkk_str,
     }
 
 @app.get("/history")
