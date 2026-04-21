@@ -18,7 +18,7 @@ concurrency:
 jobs:
   ingest-and-predict:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -57,10 +57,35 @@ jobs:
         # feature rows for inference without waiting for reanalysis.
         run: python 04_Scripts/fetch_weather.py --mode forecast
 
-      - name: "[1/4] Fetch fire hotspots from NASA FIRMS"
+      - name: "[1/4] Restore FIRMS yearly cache from S3"
+        # Pulls historical 2011-2025 cache so fetch_firms.py only queries current year.
+        # Without this, CI fetches 15 years from scratch and exceeds timeout.
+        run: |
+          mkdir -p 03_Data/raw/firms_yearly_cache
+          aws s3 sync s3://${{ secrets.S3_BUCKET_NAME }}/data/raw/firms_yearly_cache/ \
+            03_Data/raw/firms_yearly_cache/ --quiet
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION:            ${{ secrets.AWS_REGION }}
+
+      - name: "[1/4] Fetch fire hotspots from NASA FIRMS (current year only)"
         run: python 04_Scripts/fetch_firms.py
         env:
           FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+          # Only refresh the current year; prior years served from S3 cache above.
+          FIRMS_START_YEAR: "2026"
+          FIRMS_END_YEAR: "2026"
+
+      - name: "[1/4] Sync FIRMS cache back to S3"
+        if: success()
+        run: |
+          aws s3 sync 03_Data/raw/firms_yearly_cache/ \
+            s3://${{ secrets.S3_BUCKET_NAME }}/data/raw/firms_yearly_cache/ --quiet
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION:            ${{ secrets.AWS_REGION }}
 
       # ── Step 2: Feature Engineering ─────────────────────────────
       - name: "[2/4] Rebuild feature matrix"
