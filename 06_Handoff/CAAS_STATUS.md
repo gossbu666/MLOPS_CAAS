@@ -1,9 +1,107 @@
 # CAAS Project — Handoff Status Log
-**Last updated:** 2026-04-18 (session 3 — SP7 ML-quality pass)
-**Updated by:** Claude (SP7: audit + tuning + statistical rigor)
+**Last updated:** 2026-04-21 (session 4 — AWS deploy + dashboard v2)
+**Updated by:** Claude
 **Project:** ChiangMai Air Quality Alert System — End-to-End MLOps Pipeline
 **Course:** AT82.9002 Data Engineering and MLOps, AIT
 **Students:** Supanut Kompayak (st126055) · Shuvam Shrestha (st125975)
+**Presentation deadline:** 2026-04-24
+
+---
+
+## Session 4 (2026-04-20 → 2026-04-21) — AWS deploy + Dashboard v2
+
+### Live infrastructure (running)
+- **EC2 t3.small** in ap-southeast-1 at `54.255.152.224` (Free Tier account)
+- **S3 bucket** `caas-mlops-st126055` (84 objects, ~100 MB — models, processed data, results, drift reports)
+- **IAM role** `caas-ec2-role` + instance profile (S3 least-privilege: Get/Put/List only, no Delete)
+- **SSH keypair** `caas-key` (local at `~/.ssh/caas-key.pem`, locked to IP `27.145.5.100/32`)
+- Terraform state: local only (`infra/.terraform/`, gitignored)
+- Cost: ~$0.50/day — keep running until 2026-04-24, then `terraform destroy`
+
+### Live URLs
+| Service | URL | Notes |
+|--|--|--|
+| FastAPI | http://54.255.152.224:8000 | LightGBM champion + XGBoost fallback via `?model=` |
+| FastAPI docs | http://54.255.152.224:8000/docs | OpenAPI auto-docs |
+| Streamlit dashboard | http://54.255.152.224:8502 | Two-tab: Public View + Model Insights |
+| MLflow UI | http://54.255.152.224:5001 | Tracking backend on `./mlruns` volume |
+
+### Docker stack (running on EC2 via `docker compose up --build -d`)
+- `caas-api` — FastAPI uvicorn, 2 workers, port 8000 (healthy)
+- `caas-dashboard` — Streamlit (reuses api image), port 8502→8501
+- `caas-mlflow` — MLflow server (separate minimal image `Dockerfile.mlflow`), port 5001→5000
+
+Port mapping notes:
+- Dashboard external `8502` chosen to avoid local Streamlit conflicts on dev machines
+- MLflow external `5001` chosen to avoid macOS AirPlay on port 5000
+- Same mapping used on EC2 for consistency
+
+### Serving layer (champion-first)
+- [`04_Scripts/serve/app.py`](../04_Scripts/serve/app.py) serves **LightGBM as champion** + **XGBoost as A/B fallback** via `?model=lightgbm|xgboost` query param.
+- `/health`, `/forecast`, `/history`, `/model/info`, `/predict` — all 5 endpoints validated on production EC2.
+- [`Dockerfile`](../Dockerfile) runtime stage adds `libgomp1` for LightGBM OpenMP; non-root user `caas`; healthcheck on `/health`.
+
+### Dashboard v2 — two-tab redesign ([`04_Scripts/serve/dashboard.py`](../04_Scripts/serve/dashboard.py))
+- **Sidebar** (persistent): station, last data date, champion badge, refresh button, about block
+- **Tab 1: Public View**
+  - Context-aware alert banner (red if any horizon ≥ 50 µg/m³, orange if ≥ 25, green otherwise)
+  - 3 minimal forecast cards with left-border accent (no heavy cards, no gradients)
+  - **Combined chart**: 60-day observed history + 3 forecast diamonds connected by dashed line + Thai/hazard threshold rules
+  - Health guidance text driven by worst horizon
+  - AQI level reference (collapsible)
+- **Tab 2: Model Insights**
+  - Radio: LightGBM (champion) / XGBoost (fallback)
+  - Side-by-side prediction table with Δ column (LGBM − XGB)
+  - Test metrics (MAE / RMSE / R² / Alert F1 / AUROC) per horizon for selected model
+  - **Drift status** (reads `s3://caas-mlops-st126055/results/drift_summary.json` via EC2 IAM role) — 4 top-line metrics (generated date, core/soft drift counts, retrain flag) + per-feature table (PSI / KS / traffic-light status)
+  - **FIRMS contribution chart** — summed XGBoost gain of all hotspot/fire features at t+1 / t+3 / t+7, showing biomass-burning signal rises with horizon
+  - Top-10 feature importance bar chart (horizon selector)
+
+### FIRMS verification (asked 2026-04-21)
+All 6 production models (LGBM + XGB × t+1/t+3/t+7) use **6 FIRMS features**: `hotspot_50km`, `hotspot_100km`, `hotspot_7d_roll`, `hotspot_14d_roll`, `fire_flag`, `roll7_x_fire`.
+
+Contribution share (summed XGBoost gain):
+| Horizon | FIRMS share | Top FIRMS feature |
+|--|:-:|--|
+| t+1 | ~4% | `hotspot_7d_roll` (#5) |
+| t+3 | ~7% | `hotspot_7d_roll` (#4) |
+| t+7 | ~12% | `hotspot_7d_roll` (#3) |
+
+Inference uses real FIRMS values (not zeros) — 14/30 recent days have `hotspot_100km > 0`. Dec 2025 hotspot counts are low because it's off-season; Feb-Apr (current) is peak haze season so live inference would show stronger fire signal.
+
+### Infrastructure files
+- [`infra/main.tf`](../infra/main.tf) — S3 + IAM + SG + EC2 (security group description ASCII-only — hit AWS validation on em-dash)
+- [`infra/variables.tf`](../infra/variables.tf) — defaults: `t3.small`, `ap-southeast-1`, bucket `caas-mlops-st126055`, dashboard port 8502, mlflow port 5001
+- [`infra/outputs.tf`](../infra/outputs.tf) — all URLs computed from variables; includes `dashboard_url` + `github_secrets_summary`
+- `infra/terraform.tfvars` (gitignored) — SSH locked to user's IPv4 `/32`
+- [`docker-compose.yml`](../docker-compose.yml) — 3 services; dashboard container gets `S3_BUCKET_NAME` + `AWS_REGION` env passthroughs so boto3 (via IAM role) can fetch drift/importance from S3
+- EC2 `user_data` clones `https://github.com/gossbu666/MLOPS_CAAS.git`, installs Docker via official script, `aws s3 sync` (fail-soft) to pull models/data, then `docker compose up --build -d`
+
+### Repo hygiene
+- GitHub repo: `https://github.com/gossbu666/MLOPS_CAAS` (public)
+- `.gitignore` excludes: `.env`, `caas-env/`, `mlruns/`, `03_Data/raw/`, `*.keras`, `*.pkl`, `infra/.terraform*`, `infra/terraform.tfvars`, `infra/terraform.tfstate*`
+- 175 files committed; `.env` verified not in git
+- LightGBM models (`.txt`) + XGBoost models (`.json`) ARE in git (fit under GitHub size limits)
+- LSTM models (`.keras`) + scalers (`.pkl`) NOT in git — pulled from S3 at EC2 boot
+
+### Pending for 2026-04-24 presentation
+1. **Final report PDF refresh** — `07_Final/report/final_report_CAAS.pdf` still references old champion (XGBoost). Must update metrics + add FIRMS contribution finding. **Do LAST** after code/infra freeze.
+2. **PPTX slides** — `07_Final/slides/SLIDES_OUTLINE.md` exists, no `.pptx` yet. 14 slides planned.
+3. **Demo video** — `07_Final/video/` empty. ~10 min recording of live dashboard + MLflow + drift story.
+4. **Optional**: set GitHub Secrets (`AWS_*`, `S3_BUCKET_NAME`, `FIRMS_MAP_KEY`) to enable `daily_pipeline.yml` auto-drift every 3 hours.
+
+### Post-presentation cleanup
+```bash
+cd "/Users/supanut.k/WORKING_DRIVE/AIT/2nd_semester/DATA ENGINEER/Proposal Presentation/infra"
+terraform destroy       # tears down EC2 + SG + IAM (S3 bucket emptied via force_destroy=true)
+```
+
+### Known gotchas (if resuming work)
+- EC2 uses `docker compose up --build` at boot — rebuild takes ~3-5 min on t3.small
+- Docker healthcheck for `caas-dashboard` inherits from api image (checks port 8000) → container shows `unhealthy` but is actually fine on 8501
+- `st.button/st.dataframe width="stretch"` doesn't work on Streamlit 1.37.1 — use `use_container_width=True`
+- `drift_summary.json` "features" key is a **list of dicts**, not a dict keyed by feature name — dashboard parser accounts for this
+- Rebuild after dashboard change: `ssh ... 'cd /home/ubuntu/caas && sudo git pull && sudo docker compose up -d --build dashboard'`
 
 ---
 
