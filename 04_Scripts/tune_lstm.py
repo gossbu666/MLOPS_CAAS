@@ -20,7 +20,10 @@ import json
 import os
 import time
 import warnings
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+BKK = ZoneInfo("Asia/Bangkok")
 
 import numpy as np
 import pandas as pd
@@ -60,7 +63,7 @@ def make_objective(horizon: str, epochs_per_trial: int, patience: int, total_tri
         learning_rate = trial.suggest_float("learning_rate", 1e-4, 3e-3, log=True)
         batch_size = trial.suggest_categorical("batch_size", [16, 32, 64])
 
-        now = datetime.now().strftime("%H:%M:%S")
+        now = datetime.now(timezone.utc).astimezone(BKK).strftime("%H:%M:%S")
         print(
             f"   [{now}] ▶  Trial {trial.number + 1}/{total_trials}  "
             f"arch={arch} seq={seq_len} units={hidden_units} "
@@ -86,7 +89,7 @@ def make_objective(horizon: str, epochs_per_trial: int, patience: int, total_tri
         val_mae = float(result["val"]["mae"])
         elapsed = time.time() - t0
         print(
-            f"   [{datetime.now().strftime('%H:%M:%S')}] ✓  Trial {trial.number + 1} "
+            f"   [{datetime.now(timezone.utc).astimezone(BKK).strftime('%H:%M:%S')}] ✓  Trial {trial.number + 1} "
             f"val_MAE={val_mae:.3f}  test_MAE={result['test']['mae']:.3f}  "
             f"R²={result['test']['r2']:.3f}  ({elapsed:.0f}s)",
             flush=True,

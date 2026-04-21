@@ -24,7 +24,14 @@ import warnings
 import requests
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+BKK = ZoneInfo("Asia/Bangkok")
+
+
+def _now_bkk() -> datetime:
+    return datetime.now(timezone.utc).astimezone(BKK)
 
 # ── Config ─────────────────────────────────────────────────
 BASE        = os.path.dirname(os.path.abspath(__file__))
@@ -84,7 +91,7 @@ def compute_ks(train_vals: np.ndarray, recent_vals: np.ndarray):
 
 def main(trigger_retrain: bool = False, strict_exit: bool = False):
     print("🔍  CAAS Evidently Drift Monitor")
-    print(f"    Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"    Date: {_now_bkk().strftime('%Y-%m-%d %H:%M:%S %Z')}")
     print(f"    Monitoring window: last {WINDOW_DAYS} days")
     print()
 
@@ -218,7 +225,8 @@ def main(trigger_retrain: bool = False, strict_exit: bool = False):
     retrain_needed = mae_flag or drift_strong or drift_moderate
 
     summary = {
-        "timestamp":      datetime.now().isoformat(),
+        "timestamp":       datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "timestamp_local": _now_bkk().strftime("%Y-%m-%d %H:%M:%S %Z"),
         "window_days":    WINDOW_DAYS,
         "psi_drift":      any_psi_drift,
         "ks_drift":       any_ks_drift,
@@ -277,7 +285,7 @@ def main(trigger_retrain: bool = False, strict_exit: bool = False):
                     "psi_drift": bool(any_psi_drift),
                     "ks_drift":  bool(any_ks_drift),
                     "mae_flag":  bool(mae_flag),
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 }
             }
             resp = requests.post(url,
@@ -320,7 +328,7 @@ def main(trigger_retrain: bool = False, strict_exit: bool = False):
 
             report_path = os.path.join(
                 RESULTS_DIR,
-                f"drift_report_{datetime.now().strftime('%Y%m%d')}.html"
+                f"drift_report_{_now_bkk().strftime('%Y%m%d')}.html"
             )
             report.save_html(report_path)
             print(f"   📄  Evidently HTML report: {report_path}")

@@ -1,5 +1,6 @@
 {
-  "timestamp": "2026-04-19T23:59:41.845237",
+  "timestamp": "2026-04-21T10:45:07.180113Z",
+  "timestamp_local": "2026-04-21 17:45:07 +07",
   "window_days": 30,
   "psi_drift": true,
   "ks_drift": true,
