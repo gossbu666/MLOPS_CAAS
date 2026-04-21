@@ -153,7 +153,7 @@ resource "aws_iam_instance_profile" "caas_ec2_profile" {
 
 resource "aws_security_group" "caas_api" {
   name        = "${var.project_name}-api-sg"
-  description = "CAAS FastAPI server — allow API, MLflow, and SSH"
+  description = "CAAS FastAPI server - allow API, MLflow, and SSH"
 
   # FastAPI port
   ingress {

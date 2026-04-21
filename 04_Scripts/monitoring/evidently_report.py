@@ -274,9 +274,9 @@ def main(trigger_retrain: bool = False, strict_exit: bool = False):
             payload = {
                 "event_type": "drift-alert",
                 "client_payload": {
-                    "psi_drift": any_psi_drift,
-                    "ks_drift":  any_ks_drift,
-                    "mae_flag":  mae_flag,
+                    "psi_drift": bool(any_psi_drift),
+                    "ks_drift":  bool(any_ks_drift),
+                    "mae_flag":  bool(mae_flag),
                     "timestamp": datetime.now().isoformat(),
                 }
             }

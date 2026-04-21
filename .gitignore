@@ -51,6 +51,14 @@ mlartifacts/
 .aws/
 credentials
 
+# Terraform — state + local overrides (may contain secrets/IPs)
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+infra/terraform.tfvars
+*.tfplan
+
 # IDE
 .vscode/
 .idea/

@@ -57,11 +57,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
 
-      - name: Upload drift report to S3
+      - name: Upload drift artifacts to S3
         if: always()
         run: |
-          aws s3 sync 03_Data/results/drift_reports/ \
-            s3://${{ secrets.S3_BUCKET_NAME }}/results/drift_reports/ --quiet
+          # Refresh drift_summary.json (dashboard reads this)
+          if [ -f 03_Data/results/drift_summary.json ]; then
+            aws s3 cp 03_Data/results/drift_summary.json \
+              s3://${{ secrets.S3_BUCKET_NAME }}/results/drift_summary.json
+          fi
+          # Archive any date-stamped HTML reports
+          for html in 03_Data/results/drift_report_*.html; do
+            [ -f "$html" ] && aws s3 cp "$html" \
+              s3://${{ secrets.S3_BUCKET_NAME }}/results/drift_reports/$(basename "$html")
+          done
         env:
           AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
