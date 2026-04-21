@@ -62,3 +62,4 @@ infra/terraform.tfvars
 # IDE
 .vscode/
 .idea/
+.claude/
