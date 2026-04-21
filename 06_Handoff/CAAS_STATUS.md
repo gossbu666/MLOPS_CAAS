@@ -1,10 +1,64 @@
 # CAAS Project — Handoff Status Log
-**Last updated:** 2026-04-21 (session 4 — AWS deploy + dashboard v2)
+**Last updated:** 2026-04-21 (session 5 — CI/CD live-green)
 **Updated by:** Claude
 **Project:** ChiangMai Air Quality Alert System — End-to-End MLOps Pipeline
 **Course:** AT82.9002 Data Engineering and MLOps, AIT
 **Students:** Supanut Kompayak (st126055) · Shuvam Shrestha (st125975)
 **Presentation deadline:** 2026-04-24
+
+---
+
+## Session 5 (2026-04-21) — CI/CD live-green
+
+### Triggered by
+Recurring GitHub Actions failure emails (daily_pipeline every 3h + drift_check daily + tests on push). Grader opening Actions tab would have seen red ❌ everywhere = bad MLOps signal.
+
+### Root causes fixed (in order discovered)
+
+1. **No GitHub Secrets set** — workflows referenced `secrets.AWS_*` + `secrets.FIRMS_MAP_KEY` but they weren't configured. Set 5 secrets via `gh secret set`:
+   - `FIRMS_MAP_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION=ap-southeast-1`, `S3_BUCKET_NAME=caas-mlops-st126055`
+   - Note: local `.env` has stale `S3_BUCKET_NAME=caas-data-bucket` — GH Secret is correct, `.env` out of sync (not critical for live EC2 which uses IAM role).
+
+2. **pip `resolution-too-deep`** — pip's resolver choked on requirements.txt dependency graph (evidently + tensorflow + xgboost + many transitive pins like openmeteo-sdk, narwhals, nltk versions). All 3 workflows (test, daily_pipeline, drift_check) died at install step.
+   - Fix: migrated to `uv` via `astral-sh/setup-uv@v4`. Install time dropped from ~6 min (pip retrying depth) to ~40s.
+   - Required `cache-dependency-glob: requirements.txt` in setup-uv config (default looks for uv.lock which we don't have).
+   - Commit: `4f34c2e` + `270b458`.
+
+3. **Evidently script `TypeError: bool_ not JSON serializable`** — when drift detected, `evidently_report.py` POSTs to GitHub API with `psi_drift`, `ks_drift`, `mae_flag` which are numpy `bool_` values. `requests.post(json=...)` calls `json.dumps(allow_nan=False)` which doesn't handle numpy types.
+   - Fix: cast to Python `bool()` before building payload in `04_Scripts/monitoring/evidently_report.py` line 277–279.
+
+4. **Drift S3 upload path mismatch** — workflow did `aws s3 sync 03_Data/results/drift_reports/` but script saves HTML flat to `03_Data/results/drift_report_YYYYMMDD.html`. Directory didn't exist → exit 255.
+   - Fix: upload `drift_summary.json` to stable S3 path (dashboard reads this) + loop over `drift_report_*.html` files for archive.
+   - Commit: `62c29c9`.
+
+5. **`.claude/scheduled_tasks.lock` accidentally committed** — Claude Code auto-memory lockfile slipped into `git add -A`.
+   - Fix: `git rm --cached` + added `.claude/` to `.gitignore`. Commit: `d00ccc8`.
+
+### Final workflow status (2026-04-21 11:15 Bangkok)
+
+| Workflow | Trigger | Status | Run time |
+|---|---|---|---|
+| `test.yml` | push to main/develop | ✅ success | 42s |
+| `drift_check.yml` | daily 23:00 UTC + dispatch | ✅ success | 1m4s |
+| `daily_pipeline.yml` | every 3h + dispatch | ⏳ running (~20 min — FIRMS fetch slow) | TBD |
+| `retrain.yml` | annual Dec 1 | ⏸ idle (won't fire before presentation) | — |
+
+Pipeline in-flight at write time. Past steps all green: Install deps (uv), PM2.5 fetch, weather fetch. Currently on FIRMS hotspot fetch (NASA API can be slow — legitimate work, not a hang).
+
+### Files changed this session
+- `.github/workflows/daily_pipeline.yml` — pip→uv
+- `.github/workflows/drift_check.yml` — pip→uv + S3 upload path fix
+- `.github/workflows/test.yml` — pip→uv + ruff install via uv
+- `04_Scripts/monitoring/evidently_report.py` — `bool()` cast for numpy types
+- `.gitignore` — add `.claude/`
+
+### Outstanding work (unchanged from session 4)
+1. **PPTX slides** — still 0/14, outline only
+2. **Demo video** — `07_Final/video/` still empty
+3. **Final report metric refresh** — LightGBM champion + FIRMS contribution narrative
+4. **Dashboard screenshots** for slides/report
+5. **`FINALSUBMIT/` cleanup** — contains PROPOSAL PDFs from March
+6. **`terraform destroy`** — after 2026-04-24 presentation
 
 ---
 
