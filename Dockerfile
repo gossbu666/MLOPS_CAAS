@@ -64,13 +64,16 @@ USER caas
 # Expose FastAPI port
 EXPOSE 8000
 
-# Health check — Docker will restart container if /health fails
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+# Health check — Docker will restart container if /health fails.
+# start-period=60s: cold boot loads 6 model files (LightGBM x3 + XGBoost x3) before /health responds.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
-# Start the API
+# Start the API.
+# --workers 1: single worker loads models once into memory (~200 MB).
+# Running 2+ workers on t3.small (2 GB RAM, no swap) OOM-kills the box.
 WORKDIR /app/04_Scripts/serve
 CMD ["uvicorn", "app:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
-     "--workers", "2"]
+     "--workers", "1"]

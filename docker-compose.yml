@@ -31,7 +31,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      # Cold boot loads 6 models sequentially; 15s was too short and marked the container unhealthy
+      # while it was still initializing.
+      start_period: 60s
 
   dashboard:
     image: caas-api:latest   # reuses api image (streamlit + altair already inside)

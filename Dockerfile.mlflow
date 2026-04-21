@@ -10,8 +10,11 @@ RUN pip install --no-cache-dir mlflow==2.15.1
 
 EXPOSE 5000
 
+# --workers 1: default is 4 gunicorn workers (~300 MB); read-only UI on t3.small
+# does not need multi-worker concurrency.
 CMD ["mlflow", "server", \
      "--host", "0.0.0.0", \
      "--port", "5000", \
+     "--workers", "1", \
      "--backend-store-uri", "file:/mlflow/mlruns", \
      "--default-artifact-root", "file:/mlflow/mlruns"]
