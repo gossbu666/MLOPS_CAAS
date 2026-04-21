@@ -9,17 +9,21 @@ Usage (docker):  started by docker-compose; reads FASTAPI_URL + S3 env.
 import io
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import altair as alt
 import pandas as pd
 import requests
 import streamlit as st
 
+BKK = ZoneInfo("Asia/Bangkok")
+
 # ── Config ─────────────────────────────────────────────────
-FASTAPI_URL    = os.getenv("FASTAPI_URL", "http://localhost:8000")
-S3_BUCKET      = os.getenv("S3_BUCKET_NAME", "caas-mlops-st126055")
-AWS_REGION     = os.getenv("AWS_REGION", "ap-southeast-1")
+FASTAPI_URL      = os.getenv("FASTAPI_URL", "http://localhost:8000")
+S3_BUCKET        = os.getenv("S3_BUCKET_NAME", "caas-mlops-st126055")
+AWS_REGION       = os.getenv("AWS_REGION", "ap-southeast-1")
+MLFLOW_PUBLIC_URL = os.getenv("MLFLOW_PUBLIC_URL", "")
 
 ALERT_THRESHOLD = 50.0   # µg/m³ — hazardous alert trigger
 THAI_THRESHOLD  = 25.0   # µg/m³ — Thailand 24-hr standard
@@ -136,6 +140,37 @@ def worst_horizon(forecasts: dict) -> dict | None:
     return max(forecasts.values(), key=lambda f: f.get("pm25_forecast", 0))
 
 
+def freshness_badge(age_days) -> tuple[str, str, str]:
+    """Return (label, color, caption) for data-freshness indicator."""
+    if age_days is None:
+        return "Unknown", "#666666", "No freshness signal"
+    try:
+        age = int(age_days)
+    except (TypeError, ValueError):
+        return "Unknown", "#666666", "No freshness signal"
+    if age <= 0:
+        return "Fresh", "#0a7c2a", "Updated today"
+    if age == 1:
+        return "Day-old", "#b36b00", "1 day behind"
+    return "Stale", "#b30000", f"{age} days behind"
+
+
+def format_local_timestamp(ts: str | None) -> str:
+    """Normalize the FastAPI `generated_at_local` field for display."""
+    if not ts:
+        return "—"
+    # FastAPI returns "YYYY-MM-DD HH:MM:SS Asia/Bangkok"; trim to "HH:MM · DD MMM"
+    try:
+        # Drop trailing tz name if present
+        parts = ts.split(" ")
+        if len(parts) >= 2:
+            dt = datetime.strptime(" ".join(parts[:2]), "%Y-%m-%d %H:%M:%S")
+            return dt.strftime("%H:%M · %d %b %Y")
+    except Exception:
+        pass
+    return ts
+
+
 # ── Sidebar ────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### CAAS")
@@ -150,9 +185,25 @@ with st.sidebar:
     station_name = forecast_data.get("station", "—") if forecast_data else "—"
     st.write(station_name)
 
+    # Data freshness — proves the daily pipeline is live
+    as_of     = forecast_data.get("as_of_date", "—") if forecast_data else "—"
+    age_days  = forecast_data.get("data_age_days") if forecast_data else None
+    label, color, caption = freshness_badge(age_days)
     st.markdown("**Last data date**")
-    as_of = forecast_data.get("as_of_date", "—") if forecast_data else "—"
-    st.write(as_of)
+    st.markdown(
+        f"""
+        <div style="display:flex; align-items:center; gap:8px; line-height:1.4;">
+          <span style="font-weight:600; color:#111;">{as_of}</span>
+          <span style="
+              font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px;
+              background:{color}1a; color:{color}; border:1px solid {color}40;
+              letter-spacing:0.02em; text-transform:uppercase;
+          ">{label}</span>
+        </div>
+        <div style="font-size:12px; color:#666; margin-top:2px;">{caption}</div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("**Champion model**")
     champion = model_info.get("champion_model", "LightGBM") if model_info else "LightGBM"
@@ -162,6 +213,8 @@ with st.sidebar:
     if st.button("Refresh data", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
+    if MLFLOW_PUBLIC_URL:
+        st.link_button("Open MLflow ↗", MLFLOW_PUBLIC_URL, use_container_width=True)
 
     st.markdown("---")
     st.markdown("**About**")
@@ -173,11 +226,26 @@ with st.sidebar:
 
 
 # ── Header ─────────────────────────────────────────────────
-st.title("Chiang Mai Air Quality Forecast")
-st.caption(
-    "Daily PM2.5 forecasts at 1-, 3-, and 7-day horizons with hazard alerts. "
-    "Models tracked in MLflow; data pipeline runs daily."
-)
+title_col, meta_col = st.columns([3, 1])
+with title_col:
+    st.title("Chiang Mai Air Quality Forecast")
+    st.caption(
+        "Daily PM2.5 forecasts at 1-, 3-, and 7-day horizons with hazard alerts. "
+        "Models tracked in MLflow; data pipeline runs daily."
+    )
+with meta_col:
+    generated_local = forecast_data.get("generated_at_local") if forecast_data else None
+    stamp           = format_local_timestamp(generated_local)
+    st.markdown(
+        f"""
+        <div style="text-align:right; padding-top:18px;">
+          <div style="font-size:11px; color:#888; letter-spacing:0.06em; text-transform:uppercase;">Updated</div>
+          <div style="font-size:14px; color:#111; font-weight:600;">{stamp}</div>
+          <div style="font-size:11px; color:#888;">Asia/Bangkok</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # Degrade gracefully if API is down
 if forecast_data is None:
@@ -222,11 +290,73 @@ with tab_public:
                 f"in {worst_h} day(s). Air quality is within healthy range."
             )
 
-    # 3 forecast cards
-    st.markdown("#### Forecast")
-    cols = st.columns(3)
-    for col, (hkey, label) in zip(
-        cols, [("t1", "Tomorrow"), ("t3", "In 3 days"), ("t7", "In 7 days")]
+    # Grid: Today (observed) + 3 forecast cards
+    st.markdown("#### Today & forecast")
+    history_data = fetch_history(days=60)
+
+    latest_obs_val  = None
+    latest_obs_date = None
+    if history_data and history_data.get("data"):
+        last = history_data["data"][-1]
+        latest_obs_val  = last.get("pm25")
+        latest_obs_date = last.get("date")
+
+    def _card_html(label: str, sublabel: str, pm25: float, level: str, color: str, emphasis: bool = False) -> str:
+        bg       = "#ffffff" if emphasis else "#fafafa"
+        shadow   = (
+            "box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 2px 6px rgba(16,24,40,0.06);"
+            if emphasis
+            else "box-shadow: 0 1px 2px rgba(16,24,40,0.04);"
+        )
+        return f"""
+            <div style="
+                border-left: 4px solid {color};
+                padding: 14px 16px;
+                background: {bg};
+                border-radius: 6px;
+                {shadow}
+                height: 100%;
+            ">
+              <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                <div style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing:0.04em;">{label}</div>
+                <div style="font-size: 11px; color: #888;">{sublabel}</div>
+              </div>
+              <div style="font-size: 34px; font-weight: 700; color: #111; line-height: 1.15; margin-top: 4px;">
+                {pm25:.1f}<span style="font-size:14px; color:#666; font-weight:400;"> µg/m³</span>
+              </div>
+              <div style="font-size: 13px; color: {color}; font-weight: 600; margin-top: 2px;">
+                {level}
+              </div>
+            </div>
+        """
+
+    cols = st.columns(4)
+    # Today (observed)
+    with cols[0]:
+        if latest_obs_val is not None:
+            lv = level_from_pm25(latest_obs_val)
+            st.markdown(
+                _card_html("Today", f"Observed · {latest_obs_date}", latest_obs_val, lv, pm25_color(latest_obs_val), emphasis=True),
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                """
+                <div style="
+                    border-left:4px solid #ccc; padding:14px 16px; background:#fafafa;
+                    border-radius:6px; height:100%;
+                ">
+                  <div style="font-size:12px; color:#666; font-weight:600; text-transform:uppercase;">Today</div>
+                  <div style="font-size:14px; color:#888; margin-top:8px;">Observed reading unavailable</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    # 3 forecast horizons
+    for col, (hkey, label, sub) in zip(
+        cols[1:],
+        [("t1", "Tomorrow", "+1 day"), ("t3", "In 3 days", "+3 days"), ("t7", "In 7 days", "+7 days")],
     ):
         if hkey not in forecasts:
             continue
@@ -234,31 +364,11 @@ with tab_public:
         pm25  = f["pm25_forecast"]
         level = f["alert_level"]
         color = pm25_color(pm25)
-
         with col:
-            st.markdown(
-                f"""
-                <div style="
-                    border-left: 4px solid {color};
-                    padding: 12px 16px;
-                    background: #fafafa;
-                    border-radius: 4px;
-                ">
-                  <div style="font-size: 13px; color: #666; font-weight: 500;">{label}</div>
-                  <div style="font-size: 34px; font-weight: 700; color: #111; line-height: 1.1;">
-                    {pm25:.1f}<span style="font-size:14px; color:#666; font-weight:400;"> µg/m³</span>
-                  </div>
-                  <div style="font-size: 13px; color: {color}; font-weight: 600; margin-top: 2px;">
-                    {level}
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            st.markdown(_card_html(label, sub, pm25, level, color), unsafe_allow_html=True)
 
     # Combined chart — 60-day history with forecast overlay
     st.markdown("#### 60-day trend with forecast overlay")
-    history_data = fetch_history(days=60)
 
     if history_data and history_data.get("data"):
         df_hist = pd.DataFrame(history_data["data"])
@@ -336,6 +446,11 @@ with tab_public:
             "Solid blue = observed history · red diamonds = model forecast · "
             "red dashed = 50 µg/m³ hazard line · orange dashed = 25 µg/m³ Thai standard"
         )
+        st.caption(
+            "Data sources: PCD Chiang Mai station 35T (primary) with 36T fallback. "
+            "Jan–Apr 2026 values backfilled from Open-Meteo CAMS reanalysis, "
+            "bias-corrected against PCD 35T (n=92, MAE=5.39, r=0.531)."
+        )
     else:
         st.info("Historical data not yet available from the API.")
 
@@ -367,18 +482,15 @@ with tab_public:
 #  TAB 2 — MODEL INSIGHTS
 # =========================================================
 with tab_model:
-    st.markdown("#### Model selection")
-    model_choice = st.radio(
-        "Active model",
-        options=["LightGBM (champion)", "XGBoost (fallback)"],
-        index=0,
-        horizontal=True,
-        label_visibility="collapsed",
+    # ── Section: Performance ──────────────────────────────
+    st.markdown("### Performance")
+    st.caption(
+        "LightGBM is the production champion (selected via Optuna tuning + validation gate). "
+        "XGBoost is kept as a fallback for A/B comparison."
     )
-    model_key = "lightgbm" if model_choice.startswith("LightGBM") else "xgboost"
 
     # Side-by-side prediction comparison
-    st.markdown("#### Prediction comparison (both models)")
+    st.markdown("##### Prediction comparison — LightGBM vs XGBoost")
     fc_lgb = fetch_forecast("lightgbm")
     fc_xgb = fetch_forecast("xgboost")
 
@@ -399,38 +511,48 @@ with tab_model:
                 }
             )
         st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+    else:
+        st.info("Prediction comparison unavailable — one or both models not loaded.")
 
-    # Metrics table for selected model
-    st.markdown(f"#### Test metrics — {model_choice}")
+    # Champion metrics (always LightGBM); XGBoost metrics tucked in expander
+    def _metrics_rows(metrics_dict: dict) -> list:
+        out = []
+        for h, m in metrics_dict.items():
+            test  = m.get("test", {})
+            alert = m.get("alert_test", {})
+            out.append(
+                {
+                    "Horizon":      h.upper(),
+                    "MAE":          f"{test.get('mae', float('nan')):.2f}",
+                    "RMSE":         f"{test.get('rmse', float('nan')):.2f}",
+                    "R²":           f"{test.get('r2', float('nan')):.3f}",
+                    "Alert F1":     f"{alert.get('f1', float('nan')):.3f}",
+                    "Alert AUROC":  f"{alert.get('auroc', float('nan')):.3f}",
+                }
+            )
+        return out
+
+    st.markdown("##### Test metrics — LightGBM (champion)")
     if model_info:
-        metrics_key = "champion_metrics" if model_key == "lightgbm" else "fallback_metrics"
-        metrics = model_info.get(metrics_key, {})
-        if metrics:
-            rows = []
-            for h, m in metrics.items():
-                test  = m.get("test", {})
-                alert = m.get("alert_test", {})
-                rows.append(
-                    {
-                        "Horizon":  h.upper(),
-                        "MAE":      f"{test.get('mae', float('nan')):.2f}",
-                        "RMSE":     f"{test.get('rmse', float('nan')):.2f}",
-                        "R²":       f"{test.get('r2', float('nan')):.3f}",
-                        "Alert F1": f"{alert.get('f1', float('nan')):.3f}",
-                        "Alert AUROC": f"{alert.get('auroc', float('nan')):.3f}",
-                    }
-                )
-            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        champ_metrics = model_info.get("champion_metrics", {})
+        if champ_metrics:
+            st.dataframe(pd.DataFrame(_metrics_rows(champ_metrics)), hide_index=True, use_container_width=True)
         else:
-            st.info("Metrics not available from `/model/info`.")
+            st.info("Champion metrics not available from `/model/info`.")
+
+        fb_metrics = model_info.get("fallback_metrics", {})
+        if fb_metrics:
+            with st.expander("Show XGBoost (fallback) test metrics"):
+                st.dataframe(pd.DataFrame(_metrics_rows(fb_metrics)), hide_index=True, use_container_width=True)
     else:
         st.info("Model metadata unavailable.")
 
-    # Drift status — fetched from S3
-    st.markdown("#### Data drift status")
+    st.markdown("---")
+    # ── Section: Drift ────────────────────────────────────
+    st.markdown("### Data drift")
     st.caption(
-        f"Reads `s3://{S3_BUCKET}/results/drift_summary.json` via EC2 IAM role. "
-        "Updated by the daily pipeline on GitHub Actions."
+        "Snapshot from the most recent Evidently run. "
+        f"Source: `s3://{S3_BUCKET}/results/drift_summary.json` (written by the daily GitHub Actions pipeline, read via EC2 IAM role)."
     )
     drift = fetch_s3_json("results/drift_summary.json")
     if drift:
@@ -500,8 +622,12 @@ with tab_model:
     else:
         st.info("Drift report not yet available in S3. Run the daily pipeline to populate it.")
 
+    st.markdown("---")
+    # ── Section: Explainability ──────────────────────────
+    st.markdown("### Explainability")
+
     # Fire-feature contribution across horizons
-    st.markdown("#### Fire signal contribution across horizons")
+    st.markdown("##### Fire signal contribution across horizons")
     st.caption(
         "Summed XGBoost gain of all NASA FIRMS-derived features "
         "(hotspot_50km, hotspot_100km, hotspot_7d_roll, hotspot_14d_roll, fire_flag, roll7_x_fire) "
@@ -567,7 +693,7 @@ with tab_model:
         st.info("Importance CSVs not yet available in S3 — run the training pipeline to populate them.")
 
     # Feature importance — pulled from S3
-    st.markdown("#### Top features (XGBoost importance)")
+    st.markdown("##### Top features (XGBoost importance)")
     horizon_pick = st.selectbox(
         "Horizon", options=["t1", "t3", "t7"], index=0, label_visibility="collapsed"
     )
@@ -597,6 +723,10 @@ with tab_model:
 # ── Footer ─────────────────────────────────────────────────
 st.markdown("---")
 st.caption(
-    "CAAS v2 · FastAPI · Streamlit · MLflow · deployed on AWS EC2 via Terraform · "
-    f"API: `{FASTAPI_URL}` · Bucket: `s3://{S3_BUCKET}`"
+    "CAAS · FastAPI · Streamlit · MLflow · deployed on AWS EC2 via Terraform · "
+    "data pipeline in GitHub Actions"
+)
+st.caption(
+    f"API: `{FASTAPI_URL}`  ·  Bucket: `s3://{S3_BUCKET}`  ·  "
+    "Capstone AT82.9002 · AIT 2026"
 )

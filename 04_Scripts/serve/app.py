@@ -201,9 +201,12 @@ def get_forecast(model: str = "lightgbm"):
     predictions = predict_all_horizons(latest, model_kind=model)
 
     utc_iso, bkk_str = _now_iso_pair()
+    now_bkk = datetime.now(timezone.utc).astimezone(BKK)
+    data_age_days = (now_bkk.date() - forecast_date.date()).days
     return {
         "station":            "Chiang Mai (35T / 36T)",
         "as_of_date":         str(forecast_date.date()),
+        "data_age_days":      data_age_days,
         "model":              model,
         "forecasts":          predictions,
         "generated_at":       utc_iso,

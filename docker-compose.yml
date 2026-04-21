@@ -47,6 +47,7 @@ services:
       FASTAPI_URL: "http://api:8000"
       S3_BUCKET_NAME: "${S3_BUCKET_NAME:-caas-mlops-st126055}"
       AWS_REGION: "${AWS_REGION:-ap-southeast-1}"
+      MLFLOW_PUBLIC_URL: "${MLFLOW_PUBLIC_URL:-}"
     working_dir: /app/04_Scripts/serve
     command: >
       streamlit run dashboard.py
