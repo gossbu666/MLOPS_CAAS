@@ -16,9 +16,12 @@ import os
 import json
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import xgboost as xgb
+
+BKK = ZoneInfo("Asia/Bangkok")
 
 # ── Paths ───────────────────────────────────────────────────
 BASE        = os.path.dirname(os.path.abspath(__file__))
@@ -96,26 +99,32 @@ def main():
 
         print(f"   t+{days}: {pred:.1f} µg/m³  [{get_alert_level(pred)}]")
 
-    now = datetime.utcnow()
+    now_utc = datetime.now(timezone.utc)
+    now_bkk = now_utc.astimezone(BKK)
 
-    # ── Compute data freshness ───────────────────────────────
-    # How many minutes ago was the latest PM2.5 observation?
+    # ── Compute data freshness (Thai timezone) ──────────────
+    # PM2.5 dates in the CSV are Thai local dates. Compare against Thai today.
     pm25_csv = os.path.join(os.path.dirname(FEATURES), "pm25_consolidated.csv")
+    data_age_days = None
     data_freshness_minutes = None
     latest_pm25_date = None
     if os.path.exists(pm25_csv):
         pm25_df = pd.read_csv(pm25_csv, parse_dates=["date"])
         if not pm25_df.empty:
             latest_pm25_date = pm25_df["date"].max()
-            # Minutes since midnight of the latest PM2.5 date (daily resolution)
-            latest_midnight = pd.Timestamp(latest_pm25_date.date()).to_pydatetime()
-            data_freshness_minutes = int((now - latest_midnight).total_seconds() / 60)
+            data_age_days = (now_bkk.date() - latest_pm25_date.date()).days
+            latest_midnight_bkk = datetime.combine(
+                latest_pm25_date.date(), datetime.min.time(), tzinfo=BKK
+            )
+            data_freshness_minutes = int((now_bkk - latest_midnight_bkk).total_seconds() / 60)
 
     # ── Save latest_forecast.json ────────────────────────────
     output = {
         "station":                "Chiang Mai (35T)",
         "forecast_for":           str(forecast_date.date()),
-        "generated_at":           now.isoformat() + "Z",
+        "generated_at":           now_utc.isoformat().replace("+00:00", "Z"),
+        "generated_at_local":     now_bkk.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "data_age_days":          data_age_days,
         "data_freshness_minutes": data_freshness_minutes,
         "latest_pm25_date":       str(latest_pm25_date.date()) if latest_pm25_date is not None else None,
         "forecasts":              forecasts,
@@ -125,16 +134,16 @@ def main():
     with open(out_path, "w") as f:
         json.dump(output, f, indent=2)
     print(f"\n✅  Forecast saved → {out_path}")
-    if data_freshness_minutes is not None:
-        print(f"   Data freshness: {data_freshness_minutes} min "
-              f"(latest PM2.5: {latest_pm25_date.date()})")
+    if data_age_days is not None:
+        print(f"   Data age: {data_age_days} day(s) "
+              f"(latest PM2.5: {latest_pm25_date.date()}, now BKK: {now_bkk.date()})")
 
     # ── Append to forecast history CSV ───────────────────────
     # Store EVERY run (not just one per day) so the dashboard can show
     # how forecasts evolve through the day as new data arrives.
     history_row = {
         "date":        str(forecast_date.date()),
-        "generated_at": now.isoformat() + "Z",
+        "generated_at": now_utc.isoformat().replace("+00:00", "Z"),
     }
     for h, fc in forecasts.items():
         history_row[f"pm25_{h}"] = fc["pm25_forecast"]
