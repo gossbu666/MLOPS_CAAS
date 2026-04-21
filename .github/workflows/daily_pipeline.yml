@@ -69,12 +69,14 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION:            ${{ secrets.AWS_REGION }}
 
-      - name: "[1/4] Fetch fire hotspots from NASA FIRMS (current year only)"
+      - name: "[1/4] Fetch fire hotspots from NASA FIRMS (recent years only)"
+        continue-on-error: true
         run: python 04_Scripts/fetch_firms.py
         env:
           FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
-          # Only refresh the current year; prior years served from S3 cache above.
-          FIRMS_START_YEAR: "2026"
+          # Prior years (2011-2024) served from S3 cache above.
+          # 2025 uses cache (fast). 2026 fetched fresh — may be empty early-year.
+          FIRMS_START_YEAR: "2025"
           FIRMS_END_YEAR: "2026"
 
       - name: "[1/4] Sync FIRMS cache back to S3"
