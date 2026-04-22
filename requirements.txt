@@ -31,6 +31,7 @@ setuptools==80.9.0        # Keep pkg_resources available for mlflow 2.15.x
 fastapi==0.112.0
 uvicorn[standard]==0.30.6
 pydantic>=2.0
+python-pptx==1.0.2        # PowerPoint generation for presentations
 
 # --- Dashboard ---
 streamlit==1.37.1
