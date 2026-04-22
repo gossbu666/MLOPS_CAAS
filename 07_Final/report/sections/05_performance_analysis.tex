@@ -18,37 +18,44 @@ Persistence (baseline) & t+1 & 5.30  & ---   & ---   & --- \\
 Persistence (baseline) & t+3 & 8.97  & ---   & ---   & --- \\
 Persistence (baseline) & t+7 & 10.93 & ---   & ---   & --- \\
 \midrule
-XGBoost (champion)     & t+1 & \textbf{5.31}  & \textbf{9.48}  & \textbf{0.824} & \textbf{0.991} \\
-XGBoost (champion)     & t+3 & \textbf{6.91}  & \textbf{11.62} & \textbf{0.736} & \textbf{0.976} \\
-XGBoost (champion)     & t+7 & \textbf{8.34}  & \textbf{14.13} & \textbf{0.612} & \textbf{0.959} \\
+LightGBM (champion)    & t+1 & \textbf{5.12}  & \textbf{9.00}  & \textbf{0.841} & \textbf{0.992} \\
+LightGBM (champion)    & t+3 & \textbf{6.77}  & \textbf{11.78} & \textbf{0.729} & \textbf{0.973} \\
+LightGBM (champion)    & t+7 & \textbf{8.25}  & \textbf{14.36} & \textbf{0.600} & \textbf{0.946} \\
 \midrule
-LSTM                   & t+1 & 6.67  & 11.64 & 0.753 & 0.984 \\
-LSTM                   & t+3 & 8.87  & 15.89 & 0.540 & 0.927 \\
-LSTM                   & t+7 & 8.06  & 14.49 & 0.608 & 0.961 \\
+XGBoost (secondary)    & t+1 & 5.31  & 8.95  & 0.843 & 0.992 \\
+XGBoost (secondary)    & t+3 & 7.08  & 11.90 & 0.723 & 0.973 \\
+XGBoost (secondary)    & t+7 & 8.90  & 15.32 & 0.544 & 0.933 \\
 \midrule
-XGBoost (no FIRMS)     & t+1 & 5.67  & 11.21 & 0.754 & 0.983 \\
-XGBoost (no FIRMS)     & t+3 & 7.27  & 12.93 & 0.674 & 0.970 \\
-XGBoost (no FIRMS)     & t+7 & 8.70  & 15.08 & 0.558 & 0.946 \\
+LSTM (comparison)      & t+1 & 6.67  & 11.64 & 0.753 & 0.984 \\
+LSTM (comparison)      & t+3 & 8.87  & 15.89 & 0.540 & 0.927 \\
+LSTM (comparison)      & t+7 & 8.06  & 14.49 & 0.608 & 0.961 \\
+\midrule
+XGBoost (no FIRMS)     & t+1 & 6.52  & 11.21 & 0.754 & 0.983 \\
+XGBoost (no FIRMS)     & t+3 & 7.75  & 12.93 & 0.674 & 0.970 \\
+XGBoost (no FIRMS)     & t+7 & 8.80  & 15.08 & 0.558 & 0.946 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \section{Inference Latency}
 
-The FastAPI \texttt{/forecast} endpoint loads all three XGBoost models at startup
-and serves predictions from the pre-computed latest feature row.
-Typical response times measured locally:
+The FastAPI \texttt{/forecast} endpoint loads both the LightGBM champion and the
+XGBoost strong-secondary at startup and serves predictions from the pre-computed
+latest feature row. A 5-minute in-process TTL cache keyed on the feature-file
+modification time absorbs duplicate demo-time requests without staling when a new
+feature matrix lands. Typical response times measured locally:
 
 \begin{itemize}
     \item \texttt{/health}: $<$ 5~ms
-    \item \texttt{/forecast}: $<$ 50~ms (single feature row, 3 models in sequence)
+    \item \texttt{/forecast}: $<$ 30~ms cold, $<$ 2~ms cached (3 horizons scored in sequence)
     \item \texttt{/predict} (POST): $<$ 50~ms
     \item \texttt{/history}: $<$ 100~ms (reads 60-day CSV slice)
 \end{itemize}
 
-XGBoost inference is CPU-bound and scales linearly with the number of input rows.
-A t3.micro EC2 instance (2 vCPU, 1~GB RAM) is sufficient for the current
-single-station, single-user workload with co-located FastAPI, MLflow, and Streamlit.
+Gradient-boosted inference is CPU-bound and scales linearly with the number of
+input rows. A t3.small EC2 instance (2 vCPU, 2~GB RAM) with a 2~GB swap file is
+sufficient for the current single-station, single-user workload with co-located
+FastAPI, MLflow, and Streamlit.
 
 \section{Scalability Analysis}
 
@@ -83,34 +90,41 @@ The following table provides estimated operating costs based on AWS ap-southeast
 \toprule
 \textbf{Component} & \textbf{Unit Cost} & \textbf{Monthly} & \textbf{Notes} \\
 \midrule
-EC2 t3.micro (on-demand) & \$0.0104/hr & \$7.50  & FastAPI + MLflow + Streamlit co-located \\
+EC2 t3.small (on-demand) & \$0.0208/hr & \$15.00 & FastAPI + MLflow + Streamlit co-located (2~GB RAM) \\
 S3 storage (5~GB)        & \$0.023/GB  & \$0.12  & raw + processed + models + results \\
 S3 PUT/GET requests      & \$0.005/1k  & \$0.05  & daily pipeline + 3-hourly inference \\
 Data transfer (outbound) & First 100~GB free & \$0.00 & dashboard traffic within free tier \\
-GitHub Actions           & 2,000~min/month free & \$0.00 & public repo = unlimited; private $\approx$160~min/month \\
+GitHub Actions           & 2,000~min/month free & \$0.00 & public repo = unlimited \\
 AWS Lambda               & 1M requests/month free & \$0.00 & ingestion trigger within free tier \\
 \midrule
-\textbf{Total (on-demand)}  & & \textbf{\textasciitilde\$8} & \\
+\textbf{Total (on-demand)}  & & \textbf{\textasciitilde\$15} & \\
 \textbf{Total (Learner Lab)} & & \textbf{\textless\$1} & EC2 covered by credits \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \textbf{Key architectural decision:} FastAPI, Streamlit, and MLflow all run on a
-single shared EC2~t3.micro instance. Co-location is feasible because these
-services are lightweight and rarely active simultaneously under a single-station,
-low-traffic workload.
+single shared EC2~t3.small instance. Co-location is feasible because each service
+is pinned to a single worker (\texttt{uvicorn --workers 1}, \texttt{gunicorn -w 1}
+for MLflow) and the 2~GB swap file absorbs transient memory spikes. Evidently runs
+as an on-demand CLI invoked from GitHub Actions, not as a persistent web service ---
+so the always-on surface is effectively three processes (FastAPI $\approx$ 350~MB,
+MLflow UI $\approx$ 80~MB, Streamlit $\approx$ 220~MB), well within the
+2~GB RAM envelope under a single-station, low-traffic workload.
 
 \textbf{Cost optimisation options:}
 \begin{itemize}
-    \item \textbf{EC2 Spot Instance:} t3.micro spot price is typically \$0.003/hr
+    \item \textbf{EC2 Spot Instance:} t3.small spot price is typically \$0.006/hr
           --- a 70\% reduction. Acceptable for inference workloads that can tolerate
           interruption with a restart policy.
     \item \textbf{Stop EC2 when idle:} For a capstone demonstration, stopping the
           instance between presentations reduces cost to near zero.
+    \item \textbf{Scheduled shutdown:} EventBridge rules can stop the instance
+          overnight (21:00--06:00) and on weekends, cutting always-on cost by
+          $\approx$45\% without architectural change.
 \end{itemize}
 
-At \textasciitilde\$8/month on-demand (or under \$1/month with AWS Learner Lab credits),
-CAAS is substantially cheaper than commercial air quality services
+At \textasciitilde\$15/month on-demand (or under \$1/month with AWS Learner Lab
+credits), CAAS is substantially cheaper than commercial air quality services
 (e.g.\ IQAir Pro at \$299/year $\approx$ \$25/month for a single station),
 while providing superior multi-day forecasting capability.

@@ -1,82 +1,195 @@
-\chapter{Conclusion}
+\chapter{Conclusion and Recommendations}
 \label{ch:conclusion}
 
-\section{Summary of Findings}
+This chapter consolidates the principal findings of the CAAS project,
+discusses the limitations observed during its design and evaluation,
+and outlines concrete recommendations and directions for future
+research. It is organised into three sections: conclusions drawn from
+the empirical results, recommendations for operational adoption, and
+future research directions.
 
-This project designed, implemented, and deployed CAAS --- a complete end-to-end
-MLOps pipeline for PM2.5 air quality forecasting in Chiang Mai, Thailand.
+\section{Conclusions}
 
-The principal findings are:
+This project designed, implemented, and deployed CAAS --- a complete
+end-to-end MLOps pipeline for multi-horizon PM2.5 forecasting in Chiang
+Mai, Thailand. The principal empirical and engineering findings are
+summarised below.
 
-\begin{enumerate}
-    \item \textbf{XGBoost outperforms LSTM at all three horizons.} The champion
-          XGBoost model achieves MAE of 5.31, 6.91, and 8.34~\textmu g/m\textsuperscript{3}
-          at t+1, t+3, and t+7 respectively. It is interpretable via SHAP, fast
-          to train, and more stable than the LSTM across horizons. The LSTM
-          provides competitive results at t+7 (MAE 8.06 vs.\ 8.34) but degrades
-          significantly at t+3 (R²=0.54 vs.\ 0.74), confirming that tabular
-          XGBoost with engineered features is the superior approach for this problem.
+\subsection{Gradient-Boosted Trees Outperform LSTM at All Horizons}
 
-    \item \textbf{NASA FIRMS fire hotspot data adds measurable value.} Removing
-          the six fire-derived features increases MAE by 4.3--6.8\% across horizons.
-          The effect is strongest at t+1, where recent hotspot counts directly
-          predict next-day PM2.5 accumulation. This validates the cost of the
-          FIRMS data integration.
+Across t+1, t+3, and t+7 forecast horizons, gradient-boosted tree
+ensembles outperformed the tuned LSTM comparison model. The LightGBM
+champion achieves MAE of 5.12, 6.77, and 8.25~\textmu g/m\textsuperscript{3}
+at t+1, t+3, and t+7 respectively, edging the XGBoost strong-secondary
+(5.31 / 7.08 / 8.90) while both remain interpretable via SHAP and train
+in minutes on commodity hardware. The LSTM provides competitive results
+only at t+7 (MAE 8.06) but degrades substantially at t+3
+(R\textsuperscript{2}~=~0.54 versus 0.73 for the gradient-boosted
+models). This empirical result answers RQ2: tabular gradient boosting
+with engineered lag features is the superior approach for this problem,
+and XGBoost is therefore retained as a runtime fallback on the FastAPI
+service to support A/B comparison, not because it wins on accuracy.
 
-    \item \textbf{The predictive signal shifts with horizon.} SHAP analysis reveals
-          a clear transition: at t+1, recent PM2.5 (\texttt{pm25\_lag1}) dominates;
-          at t+3, 14-day fire accumulation (\texttt{hotspot\_14d\_roll}) is most
-          important; at t+7, seasonal position (\texttt{sin\_month}) is the
-          strongest signal. This is physically interpretable and consistent with
-          the meteorology of Chiang Mai haze events.
+\subsection{NASA FIRMS Fire Data Adds Measurable Value}
 
-    \item \textbf{The default 50~\textmu g/m\textsuperscript{3} alert threshold is
-          near-optimal for multi-day horizons.} Scenario~C shows that only the
-          t+1 classifier benefits meaningfully from threshold tuning
-          (53.7~\textmu g/m\textsuperscript{3}, +4.0\% F1). The standard WHO/Thai
-          threshold is well-calibrated for t+3 and t+7.
+The Scenario~D ablation study shows that removing the six FIRMS-derived
+features increases MAE by 4.3--6.8\% across horizons. The effect is
+strongest at t+1, where recent hotspot counts directly predict
+next-day PM2.5 accumulation. This answers RQ3: fire-hotspot data is
+not merely a statistically significant feature, it is operationally
+material, and the cost of the FIRMS data integration is justified.
 
-    \item \textbf{The MLOps pipeline is production-ready within its design scope.}
-          Automated daily ingestion, drift monitoring with a seasonal-aware retrain
-          policy, champion/challenger validation, and Terraform-provisioned AWS
-          infrastructure together constitute a deployable, maintainable system.
-\end{enumerate}
+\subsection{The Predictive Signal Shifts With Horizon}
 
-\section{Limitations}
+SHAP interpretation on the gradient-boosted family reveals a clear
+transition in dominant features: at t+1, recent PM2.5 (\texttt{pm25\_lag1})
+dominates; at t+3, 14-day fire accumulation
+(\texttt{hotspot\_14d\_roll}) is most important; at t+7, seasonal
+position (\texttt{sin\_month}) is the strongest signal. This gradient
+--- from measurement-driven to climatology-driven prediction --- is
+physically interpretable and consistent with the meteorology of Chiang
+Mai haze events.
+
+\subsection{The Default 50~\textmu g/m\textsuperscript{3} Alert Threshold Is Near-Optimal}
+
+Scenario~C threshold tuning shows that only the t+1 classifier benefits
+meaningfully from threshold adjustment (53.7~\textmu g/m\textsuperscript{3},
++4.0\% F1 gain). The standard WHO/Thai threshold is well-calibrated for
+the t+3 and t+7 horizons, so the default 50~\textmu g/m\textsuperscript{3}
+threshold is retained operationally.
+
+\subsection{The MLOps Pipeline Is Production-Ready Within Its Design Scope}
+
+Automated daily ingestion, drift monitoring with a seasonal-aware
+retrain policy, champion/challenger validation, and Terraform-provisioned
+AWS infrastructure together constitute a deployable, maintainable
+system operating at approximately \$0.55/day. This answers RQ4:
+a complete, self-retraining environmental MLOps system can be operated
+within a student-scale budget.
+
+\section{Recommendations}
+
+The following recommendations are directed at stakeholders who wish to
+adopt or extend CAAS in an operational or educational setting.
+
+\subsection{For Operational Adoption}
 
 \begin{itemize}
-    \item \textbf{Single station.} CAAS currently operates on one Chiang Mai
-          monitoring station. PM2.5 varies spatially, and a network of stations
-          would provide better coverage for the population.
-    \item \textbf{Historical weather only.} The pipeline uses ERA5 reanalysis
-          weather data (accurate but historical). True production use requires
-          weather forecast inputs (e.g.\ GFS or ECMWF), which introduce their own
-          forecast uncertainty.
-    \item \textbf{LSTM underperformance at t+3.} Despite architectural improvements
-          (seq\_len=60, deeper network, BatchNorm), the LSTM R² of 0.54 at t+3
-          indicates the model struggles at the mid-range horizon. This suggests
-          the temporal sequences do not provide sufficient additional signal over
-          the tabular lag features already engineered for XGBoost.
-    \item \textbf{Sparse fire data in non-haze months.} Zero-inflation in the FIRMS
-          features during the rainy season limits PSI-based drift detection and
-          requires suppression logic. A seasonal model could handle this more
-          elegantly.
+    \item \textbf{Retain both gradient-boosted models in production.}
+          The LightGBM champion is the primary serving model, but the
+          XGBoost strong-secondary is low-cost to keep loaded and
+          provides a natural A/B comparison surface when new champions
+          are promoted.
+
+    \item \textbf{Keep the default 50~\textmu g/m\textsuperscript{3}
+          alert threshold.} The threshold-tuning analysis shows that
+          the aligned WHO/Thai national standard is near-optimal for
+          two of the three horizons, and operational consistency with
+          public-health guidance outweighs the marginal F1 gain at t+1.
+
+    \item \textbf{Operate with the seasonal-aware drift policy.}
+          Naive PSI/KS drift alarms fire during the annual haze season
+          by design of the underlying data; the two-tier core/soft
+          feature policy described in Chapter~\ref{ch:mlops} preserves
+          genuine drift sensitivity while suppressing expected seasonal
+          variation.
+
+    \item \textbf{Shut down the always-on EC2 instance between runs
+          outside demonstration periods.} Scheduled EventBridge stops
+          reduce operational cost by approximately 45\% without
+          architectural change.
 \end{itemize}
 
-\section{Future Work}
+\subsection{For Educational Adoption}
 
 \begin{itemize}
-    \item \textbf{Multi-station expansion:} Extend to all 60+ PCD monitoring
-          stations in Thailand, enabling national-scale air quality forecasting.
-    \item \textbf{Weather forecast integration:} Replace reanalysis inputs with
-          ECMWF HRES forecast data to enable genuine real-time t+3 and t+7
-          predictions without relying on observed weather.
-    \item \textbf{Graph Neural Network:} Model spatial dependencies between
-          nearby stations using a GNN, potentially improving long-horizon
-          forecasts by propagating upstream fire signals across the network.
-    \item \textbf{Hyperparameter optimisation:} Replace manual tuning with Optuna
-          or Ray Tune to systematically search the hyperparameter space.
-    \item \textbf{Kubernetes serving:} For production deployment at scale, migrate
-          from a single EC2 instance to a Kubernetes cluster with horizontal
-          pod autoscaling.
+    \item The appendix reproduction guide is sufficient to rebuild the
+          system from a clean checkout in a single afternoon on a
+          modern laptop, modulo LSTM training time. This makes CAAS a
+          suitable reference implementation for subsequent capstone
+          cohorts studying environmental MLOps.
+
+    \item All external data sources are free at research scale (PCD
+          Thailand, Open-Meteo, NASA FIRMS), and the full AWS stack can
+          be operated inside an AWS Learner Lab credit budget for
+          extended periods. This removes two common barriers to
+          student-scale MLOps reproduction.
 \end{itemize}
+
+\section{Future Research Directions}
+
+Several natural extensions remain outside the scope of the present
+capstone but are well-motivated by the observed results.
+
+\subsection{Multi-Station Expansion}
+
+CAAS currently operates on a single Chiang Mai monitoring station.
+PM2.5 varies spatially, and a network of stations would provide better
+population coverage. Extending to all 60-plus PCD monitoring stations
+in Thailand would enable national-scale air-quality forecasting and
+would provide the training scale at which graph neural networks
+(GNNs) become competitive for modelling spatial dependencies between
+nearby stations.
+
+\subsection{Weather Forecast Integration}
+
+The pipeline currently uses ERA5 reanalysis weather data, which is
+accurate but historical. True production use at t+3 and t+7 horizons
+requires weather-forecast inputs (ECMWF HRES or GFS) as upstream
+features. Incorporating forecast meteorology would introduce forecast
+uncertainty into the pipeline but is essential for genuine multi-day
+predictive operation rather than simulated hindcast evaluation.
+
+\subsection{Improved Long-Horizon Modelling}
+
+Despite architectural improvements (sequence length~=~60, deeper
+network, batch normalisation), the LSTM R\textsuperscript{2} of 0.54 at
+t+3 indicates the model struggles at the mid-range horizon. This
+suggests the temporal sequences do not provide sufficient additional
+signal over the tabular lag features already engineered for the
+gradient-boosted models. Transformer architectures with learned
+temporal positional encodings, or explicit separation of climatological
+and anomaly components, are promising directions for closing this
+gap at t+3.
+
+\subsection{Seasonal-Component Modelling for Sparse-Fire Periods}
+
+Zero-inflation in the FIRMS features during the rainy season limits
+PSI-based drift detection and requires suppression logic.
+Explicit seasonal-component models --- for example, STL decomposition
+with separate training regimes for the burning and non-burning
+seasons --- could handle this more elegantly than the current
+suppression heuristic.
+
+\subsection{Kubernetes Serving at Scale}
+
+For production deployment at scale, migrating from a single EC2
+instance to a Kubernetes cluster with horizontal pod autoscaling
+would remove the co-location ceiling on request throughput and enable
+geographically distributed serving. This is unnecessary at the current
+single-station, low-traffic workload but is the obvious scaling path
+beyond it.
+
+\subsection{Deeper Hyperparameter Optimisation}
+
+The current Optuna searches (100 trials per family per horizon) could
+be extended with multi-fidelity pruning (Hyperband) or
+population-based training for more efficient use of compute, and the
+search space itself could be broadened to include regularisation
+schedules and early-stopping variants that the current search holds
+fixed.
+
+\subsection{Limitations}
+
+Finally, we acknowledge the limitations of the present work, which
+bound the generalisability of our conclusions. CAAS operates on a
+single Chiang Mai monitoring station; PM2.5 varies spatially and
+inter-station transferability is not demonstrated. The pipeline uses
+historical ERA5 weather (accurate but retrospective) rather than
+forecast weather inputs, so the t+3 and t+7 evaluations are hindcasts
+rather than genuine forward predictions. The LSTM t+3
+underperformance was not fully resolved within the project budget.
+Zero-inflation in the FIRMS features during the rainy season limits
+PSI-based drift detection and currently requires suppression logic
+rather than a more principled seasonal model. Addressing these
+limitations constitutes the core of the future-work agenda above.

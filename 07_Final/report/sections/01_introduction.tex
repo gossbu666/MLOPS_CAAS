@@ -1,57 +1,182 @@
 \chapter{Introduction}
 \label{ch:introduction}
 
+\section{Background}
+
+Chiang Mai, located in the mountainous basin of northern Thailand,
+experiences one of the most acute seasonal air-pollution episodes in
+Southeast Asia. Between February and April each year, the combination of
+widespread agricultural burning, forest fires, and stagnant boundary-layer
+meteorology drives PM2.5 concentrations well above both the World Health
+Organization's 24-hour guideline of 15~\textmu g/m\textsuperscript{3}
+(\cite{who2021}) and Thailand's national standard of
+50~\textmu g/m\textsuperscript{3}. Concentrations above
+150~\textmu g/m\textsuperscript{3} are routine during the peak burning weeks,
+with daily peaks occasionally exceeding 300~\textmu g/m\textsuperscript{3}.
+
+The public-health impact is substantial. Elevated PM2.5 is causally linked
+to respiratory disease, cardiovascular events, and premature mortality, with
+particularly acute risk for children, the elderly, pregnant women, and
+outdoor workers. Against this backdrop, Thailand's Pollution Control
+Department (PCD, \cite{pcd}) publishes measured PM2.5 values through the
+air4thai portal, but the portal reports observed concentrations rather than
+forecasts. Residents are therefore informed that conditions are already
+hazardous; they cannot plan several days ahead around predicted hazardous
+episodes, nor is there a systematic, publicly accessible multi-horizon
+forecast service for Chiang Mai.
+
+This gap --- between rich, available measurement data and the absence of a
+production-grade forecasting service --- defines the opportunity that the
+present project addresses.
+
 \section{Problem Statement}
 
-Chiang Mai, Thailand, experiences severe seasonal air pollution events driven by
-agricultural burning and forest fires between February and April each year.
-PM2.5 concentrations routinely exceed 150~\textmu g/m\textsuperscript{3} during
-haze season --- more than six times the WHO guideline of 15~\textmu g/m\textsuperscript{3}
-and three times Thailand's national standard of 50~\textmu g/m\textsuperscript{3}.
-The health impact is substantial: elevated PM2.5 is associated with respiratory
-disease, cardiovascular events, and premature mortality, placing particular burden
-on children, the elderly, and outdoor workers.
+Despite the severity of PM2.5 pollution in Chiang Mai, no publicly
+accessible automated forecasting service provides residents with reliable
+multi-day PM2.5 predictions or advance hazard alerts. Concretely, the
+problem addressed in this project can be stated as follows:
 
-Despite the severity of the problem, no publicly accessible automated forecasting
-service provides Chiang Mai residents with reliable multi-day PM2.5 predictions.
-Current government monitoring (air4thai, PCD Thailand) reports measured values
-but does not forecast future concentrations or issue advance hazard warnings,
-leaving citizens unable to plan protective behaviour.
+\begin{quote}
+Given fifteen years of historical PM2.5 measurements at a Chiang Mai
+monitoring station, co-located meteorological data, and regional satellite
+fire-hotspot observations, build a production-grade machine-learning system
+that (a) forecasts PM2.5 one, three, and seven days ahead, (b) issues binary
+hazard alerts when forecast PM2.5 exceeds 50~\textmu g/m\textsuperscript{3},
+and (c) operates under a continuously monitored, self-retraining MLOps
+pipeline deployable within a student-scale cloud budget.
+\end{quote}
+
+The problem is not merely a modelling exercise: reaching a grade of
+\emph{production-grade} requires addressing data engineering
+(heterogeneous-source ingestion, deduplication, schema stability),
+machine-learning discipline (chronological splits, champion/secondary
+governance, interpretability), MLOps rigour (drift monitoring with
+seasonal awareness, automated retraining, infrastructure as code), and
+operational economics (sub-dollar-per-day cost to justify realistic
+deployment).
+
+\section{Research Questions}
+
+This project is organised around four concrete research questions that
+motivate its design and evaluation:
+
+\begin{enumerate}
+    \item \textbf{RQ1.} Can a machine-learning model trained on daily
+          PM2.5, weather, and fire-hotspot features forecast PM2.5 for
+          Chiang Mai at t+1, t+3, and t+7 horizons with meaningfully lower
+          error than a persistence baseline?
+
+    \item \textbf{RQ2.} Given that both gradient-boosted tree ensembles
+          and recurrent deep sequence models are widely used for tabular
+          time-series forecasting, which family performs better on this
+          specific problem, and is there measurable benefit from retaining
+          more than one model family in production?
+
+    \item \textbf{RQ3.} What is the measurable contribution of NASA FIRMS
+          satellite fire-hotspot features to forecast accuracy, and does
+          that contribution vary across forecast horizons?
+
+    \item \textbf{RQ4.} Can a complete, self-retraining MLOps system ---
+          including automated ingestion, drift monitoring, champion/challenger
+          validation, and cloud deployment --- be operated within a
+          student-scale budget while remaining rubric-compliant and
+          reproducible end-to-end?
+\end{enumerate}
 
 \section{Objectives}
 
-This project --- the \textbf{ChiangMai Air Quality Alert System (CAAS)} ---
-addresses this gap by building a complete, end-to-end MLOps pipeline that:
+The above research questions translate into the following project
+objectives. This project --- the
+\textbf{ChiangMai Air Quality Alert System (CAAS)} --- aims to:
 
 \begin{enumerate}
-    \item \textbf{Forecasts PM2.5} at three horizons: next day (t+1), three days ahead (t+3),
-          and seven days ahead (t+7), using 15 years of historical data (2011--2025).
-    \item \textbf{Issues binary hazard alerts} when PM2.5 is forecast to exceed
-          50~\textmu g/m\textsuperscript{3}, enabling early protective action.
-    \item \textbf{Integrates NASA FIRMS fire hotspot data} alongside meteorological
-          variables to capture the dominant driver of seasonal PM2.5 spikes.
-    \item \textbf{Deploys as a production-grade MLOps pipeline} with automated
-          data ingestion, drift monitoring, champion/challenger model governance,
-          and CI/CD-triggered retraining.
+    \item \textbf{Build an end-to-end data-engineering pipeline} that
+          ingests, consolidates, and feature-engineers PM2.5, weather, and
+          fire data from three independent public sources, producing a
+          clean 45-feature daily matrix spanning 2011--2025.
+
+    \item \textbf{Develop, tune, and compare multiple forecast model
+          families} --- LightGBM, XGBoost, and LSTM --- under a shared
+          chronological evaluation protocol at t+1, t+3, and t+7 horizons.
+
+    \item \textbf{Issue binary hazard alerts} at a physically motivated
+          threshold (PM2.5 $>$ 50~\textmu g/m\textsuperscript{3}) and
+          empirically evaluate whether this default threshold is optimal
+          through precision--recall analysis.
+
+    \item \textbf{Operationalise the winning model(s)} behind a FastAPI
+          inference service with MLflow experiment tracking, a Streamlit
+          monitoring dashboard, Evidently drift detection, and GitHub Actions
+          CI/CD orchestration.
+
+    \item \textbf{Provision all cloud infrastructure through Terraform}
+          such that the full stack can be deployed to a fresh AWS account
+          with a single \texttt{terraform apply}.
+
+    \item \textbf{Interpret the resulting model} with SHAP analysis to
+          demonstrate that the dominant predictive signal shifts in a
+          physically interpretable way with forecast horizon.
 \end{enumerate}
 
-\section{Contributions}
+\section{Scope and Contributions}
 
-The key contributions of this project are:
+The scope of this project is deliberately bounded to keep it deliverable
+within a single capstone semester. CAAS targets a single PCD monitoring
+station in Chiang Mai (station codes 35T/36T), operates at daily temporal
+resolution, and uses historical weather reanalysis rather than live weather
+forecast inputs. Multi-station extension, hourly resolution, and forecast
+weather are discussed as future work in Chapter~\ref{ch:conclusion}.
+
+Within this scope, the key contributions of this project are:
 
 \begin{itemize}
-    \item A 45-feature dataset spanning 5,257 days (2011--2025), merging three
-          heterogeneous sources: PCD PM2.5 measurements, Open-Meteo weather
-          reanalysis, and NASA FIRMS fire hotspot counts.
-    \item An XGBoost champion model achieving MAE of 5.31, 6.91, and
-          8.34~\textmu g/m\textsuperscript{3} at t+1, t+3, and t+7 respectively,
-          with AUROC~$\geq$~0.96 across all horizons.
-    \item A SHAP-based interpretability analysis demonstrating that the dominant
-          predictive signal shifts from recent PM2.5 lags (short horizons) to
-          fire hotspot accumulation and seasonal position (longer horizons).
-    \item An ablation study quantifying the contribution of FIRMS fire data:
-          removing six fire-derived features degrades MAE by 4.3--6.8\% across horizons.
-    \item A complete MLOps stack: FastAPI inference service, Streamlit monitoring
-          dashboard, Evidently drift monitoring with automated GitHub Actions
-          retraining triggers, and Terraform-provisioned AWS infrastructure.
+    \item A 45-feature dataset spanning 5,257 days (2011--2025), merging
+          three heterogeneous sources: PCD PM2.5 measurements, Open-Meteo
+          weather reanalysis, and NASA FIRMS fire hotspot counts.
+
+    \item A LightGBM champion (Optuna-tuned) and XGBoost strong-secondary,
+          both operationalised behind the same FastAPI service. The champion
+          achieves MAE of 5.12, 6.77, and 8.25~\textmu g/m\textsuperscript{3}
+          at t+1, t+3, and t+7 respectively, with
+          AUROC~$\geq$~0.95 across all horizons.
+
+    \item A SHAP-based interpretability analysis demonstrating that the
+          dominant predictive signal shifts from recent PM2.5 lags at
+          short horizons to fire accumulation and seasonal calendar
+          position at longer horizons.
+
+    \item An ablation study quantifying the contribution of FIRMS fire
+          data: removing the six fire-derived features degrades MAE by
+          4.3--6.8\% across horizons.
+
+    \item A complete MLOps stack --- FastAPI inference service, Streamlit
+          dashboard, Evidently drift monitoring with seasonal-aware
+          retrain policy, Terraform-provisioned AWS infrastructure,
+          and GitHub Actions CI/CD --- operating at approximately
+          \$0.55/day.
 \end{itemize}
+
+\section{Organisation of the Report}
+
+The remainder of this report is organised as follows.
+Chapter~\ref{ch:literature-review} reviews prior work on PM2.5
+forecasting, gradient-boosted versus deep sequence models for tabular
+time-series, satellite fire observations, and MLOps patterns for
+environmental ML systems.
+Chapter~\ref{ch:data-engineering} describes the three data sources, the
+ingestion pipeline, the 45-feature engineering, and the S3-based storage
+and versioning layout.
+Chapter~\ref{ch:ml-development} details model selection, hyperparameter
+tuning, evaluation results, ablation studies, alert-threshold analysis,
+and SHAP interpretability.
+Chapter~\ref{ch:mlops} describes the MLOps architecture ---
+MLflow tracking, FastAPI serving, CI/CD pipelines, Evidently drift
+monitoring, and Terraform infrastructure as code.
+Chapter~\ref{ch:performance} presents performance and scalability
+analysis, inference latency, and a cost breakdown at AWS on-demand and
+AWS Learner Lab pricing.
+Chapter~\ref{ch:conclusion} concludes the report, summarises the key
+findings, discusses limitations, and outlines recommendations and
+future research directions. The References section follows, and the
+Appendix provides a complete step-by-step reproduction guide and full
+metric tables.

@@ -1,0 +1,110 @@
+\chapter{Literature Review}
+\label{ch:literature-review}
+
+This chapter surveys prior work relevant to four design pillars of CAAS:
+(i) air-quality forecasting for fine particulate matter, (ii) model-family
+choice for tabular time-series problems, (iii) the role of satellite fire
+observations in atmospheric prediction, and (iv) production-grade MLOps
+patterns for environmental machine-learning systems. Each section motivates
+a concrete choice in the CAAS design.
+
+\section{Air-Quality Forecasting for PM2.5}
+
+Fine particulate matter with aerodynamic diameter below 2.5~\textmu m
+(PM2.5) is the single largest environmental cause of premature mortality
+worldwide, with the World Health Organization (\cite{who2021}) revising its
+24-hour guideline downward to 15~\textmu g/m\textsuperscript{3} in 2021 to
+reflect strengthened epidemiological evidence. Government monitoring networks
+in Thailand publish measured PM2.5 through portals such as air4thai
+(\cite{pcd}), but these portals are retrospective --- they report what was
+observed, not what is expected over the coming days. This gap motivates the
+present work: forecast-driven alerting.
+
+Statistical and machine-learning approaches to PM2.5 forecasting have
+evolved from simple persistence and ARIMA baselines toward gradient-boosted
+tree ensembles and deep sequence models. For Southeast Asian haze events,
+\cite{chaing_mai_haze} demonstrated that regional meteorological and fire
+drivers dominate PM2.5 dynamics during the burning season, motivating
+multi-source feature fusion. Satellite-derived proxies such as aerosol
+optical depth have also been calibrated against ground PM2.5 measurements
+(\cite{psi}), though such proxies are coarse in time and are not directly
+used in CAAS because the Chiang Mai monitoring station provides a direct
+PM2.5 measurement at daily resolution.
+
+CAAS adopts a daily tabular formulation with engineered lag, rolling, and
+cyclic-calendar features, deferring image-based aerosol retrievals to future
+work. The persistence baseline (yesterday's value) is retained as a
+reference against which any learned model must demonstrate a meaningful
+improvement.
+
+\section{Gradient Boosting Versus Deep Learning for Tabular Time Series}
+
+The question of whether to use gradient-boosted decision trees or deep
+sequence models on tabular time-series problems remains contested in the
+applied literature. XGBoost (\cite{xgboost}) and LightGBM --- the two
+dominant gradient-boosting implementations --- offer histogram-based
+training, native handling of missing values, and strong regularisation
+controls, with inference latencies typically in the low milliseconds for
+tables of this size. Long Short-Term Memory (LSTM) networks
+(\cite{lstm}) in contrast explicitly model temporal dependencies through
+gated recurrence, at the cost of greater hyperparameter sensitivity and
+higher training budgets.
+
+Recent empirical surveys have repeatedly found that on moderately sized
+tabular problems with engineered temporal features, gradient-boosted models
+match or outperform deep sequence models. The value of deep models tends to
+appear only at very long sequence lengths, in multi-variate settings with
+complex cross-feature interactions, or when raw un-engineered features
+dominate. The CAAS feature matrix (45 engineered features, $\sim$5,000 daily
+records) sits squarely within the regime where gradient-boosted methods
+typically win.
+
+This literature informs the CAAS model-selection hierarchy: LightGBM is
+designated champion, XGBoost is retained as a strong-secondary for runtime
+A/B comparison, and LSTM is trained as a comparison baseline to test --- not
+assume --- whether temporal sequence structure adds value over
+tree-friendly lag features. Chapter~\ref{ch:ml-development} reports the
+empirical outcome of this comparison.
+
+\section{Satellite Fire Observations in Atmospheric Modelling}
+
+The NASA Fire Information for Resource Management System (FIRMS,
+\cite{firms}) delivers near-real-time active-fire detections from VIIRS and
+MODIS sensors, including fire radiative power (FRP) as an intensity proxy.
+FIRMS data have been used extensively in smoke-transport modelling and
+regional air-quality forecasting, particularly for agricultural-burning
+events in Southeast Asia where in-situ fire monitoring is sparse.
+
+For Chiang Mai specifically, the dominant PM2.5 source during February--April
+is biomass burning in the surrounding highlands and in neighbouring countries
+upwind. Incorporating FIRMS hotspot counts and rolling fire accumulation
+features is therefore physically motivated: yesterday's fire activity
+influences tomorrow's PM2.5 concentration through transport and atmospheric
+mixing. The CAAS feature engineering reflects this mechanism through
+hotspot counts within 50~km and 100~km radii and 7-day/14-day rolling
+windows. Chapter~\ref{ch:ml-development} reports an ablation study
+(Scenario~D) that quantifies the measurable contribution of these
+FIRMS-derived features relative to the weather-and-lag-only baseline.
+
+\section{MLOps Patterns for Environmental Machine-Learning Systems}
+
+Operationalising a machine-learning model involves far more than training.
+The MLOps stack adopted in CAAS follows the now-standard pattern in which
+distinct tools handle distinct concerns: MLflow (\cite{mlflow}) for
+experiment tracking and model registry; FastAPI (\cite{fastapi}) for
+low-latency model serving; Evidently (\cite{evidently}) for distribution
+drift monitoring; Terraform (\cite{terraform}) for cloud infrastructure
+as code; Docker (\cite{docker}) for reproducible containerised deployment;
+and GitHub Actions (\cite{githubactions}) for CI/CD orchestration.
+
+Drift detection in environmental ML systems presents a specific complication
+that generic MLOps literature does not address: strong, expected seasonal
+variation. A naive population-stability-index (PSI) or
+Kolmogorov--Smirnov (\cite{ks_test}) drift alarm raised against a summer
+baseline will fire during the January--April haze season every year, producing
+false positives and eroding operator trust. CAAS addresses this with a
+two-tier drift policy that combines core-feature thresholds with seasonal
+reference windows, described in Chapter~\ref{ch:mlops}. This seasonal-aware
+retraining policy is, to our knowledge, a novel contribution in the context
+of student-scale environmental MLOps projects and is one of the key
+engineering contributions of this work.

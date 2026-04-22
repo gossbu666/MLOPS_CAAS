@@ -2,12 +2,15 @@
 %  CAAS — Final Project Report
 %  AT82.9002 Data Engineering and MLOps, AIT
 %  Supanut Kompayak (st126055) · Shuvam Shrestha (st125975)
+%  Format: AIT Master's Thesis Format (January 2026) — adapted
 % ============================================================
 \documentclass[11pt,a4paper]{report}
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage[margin=1in]{geometry}
+\usepackage{setspace}
+\onehalfspacing
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{amsmath}
@@ -30,48 +33,143 @@
   citecolor=blue
 }
 
-\title{CAAS: ChiangMai Air Quality Alert System \\
-       \large An End-to-End MLOps Pipeline for PM2.5 Forecasting}
-\author{Supanut Kompayak (st126055) \and Shuvam Shrestha (st125975) \\
-        AT82.9002 Data Engineering and MLOps \\
-        Asian Institute of Technology}
-\date{\today}
-
 \begin{document}
 
-\maketitle
-\tableofcontents
+% ------------------------------------------------------------
+% Front matter (roman page numbers)
+% ------------------------------------------------------------
+\pagenumbering{roman}
 
-\begin{abstract}
+% --- Title page (matches AIT progress-report cover style) ---
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{center}
+
+\vspace*{1.0cm}
+
+% --- AIT header ---
+% If a logo file is placed at figures/ait_logo.png, uncomment the next line:
+% \includegraphics[height=2.2cm]{ait_logo}\\[0.6em]
+{\large\bfseries ASIAN INSTITUTE OF TECHNOLOGY\par}
+{\normalsize School of Engineering and Technology\par}
+{\normalsize Department of Data Science and Artificial Intelligence\par}
+
+\vspace{1.5cm}
+\rule{0.8\textwidth}{0.5pt}
+\vspace{1.2cm}
+
+{\large\bfseries
+CHIANGMAI AIR QUALITY ALERT SYSTEM: \\[0.3em]
+END-TO-END MLOPS PIPELINE FOR PM2.5 FORECASTING\par}
+
+\vspace{1.8cm}
+
+{\itshape Final Report\par}
+
+\vspace{2.0cm}
+
+by
+
+\vspace{1.5cm}
+
+Supanut Kompayak (st126055) \\[0.3em]
+Shuvam Shrestha (st125975)
+
+\vspace{2.0cm}
+
+A Final Report Submitted in Partial Fulfillment of the Requirements \\
+for the Course AT82.9002 -- Selected Topic: Data Engineering and MLOps
+
+\vspace{1.5cm}
+
+\begin{tabular}{@{}ll@{}}
+Instructor: & Dr.\ Chantri Polprasert \\[0.3em]
+Course:     & AT82.9002 Selected Topic: Data Engineering and MLOps \\[0.3em]
+Semester:   & January 2026 \\
+\end{tabular}
+
+\vfill
+
+\rule{0.5\textwidth}{0.4pt}\\[0.6em]
+Asian Institute of Technology, Thailand \\[0.3em]
+April 2026
+
+\vspace{0.8cm}
+\end{center}
+\end{titlepage}
+
+\input{sections/00_declaration}
+
+\input{sections/00_acknowledgments}
+
+% --- Abstract ---
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
 Chiang Mai, Thailand experiences severe annual PM2.5 pollution events driven by
 agricultural burning, with concentrations frequently exceeding the WHO 24-hour
 guideline of 15~\textmu g/m\textsuperscript{3} by an order of magnitude.
-This report presents CAAS (ChiangMai Air Quality Alert System), a production-grade
-end-to-end MLOps pipeline for multi-horizon PM2.5 forecasting and binary hazard
-alerting (PM2.5 $>$ 50~\textmu g/m\textsuperscript{3}).
+This report presents CAAS (ChiangMai Air Quality Alert System), a
+production-grade end-to-end MLOps pipeline for multi-horizon PM2.5 forecasting
+and binary hazard alerting (PM2.5 $>$ 50~\textmu g/m\textsuperscript{3}).
 CAAS integrates three data sources --- PCD Thailand PM2.5 measurements,
-Open-Meteo ERA5 weather reanalysis, and NASA FIRMS satellite fire hotspot data ---
-into a 45-feature daily time-series matrix spanning 2011--2025.
-An XGBoost champion model outperforms an LSTM comparison model at all forecast
-horizons, achieving MAE of 5.31, 6.91, and 8.34~\textmu g/m\textsuperscript{3}
-at t+1, t+3, and t+7 days respectively (R\textsuperscript{2} = 0.824 / 0.736 / 0.612,
-AUROC = 0.991 / 0.976 / 0.959 on the 2024--2025 test set).
+Open-Meteo ERA5 weather reanalysis, and NASA FIRMS satellite fire hotspot data
+--- into a 45-feature daily time-series matrix spanning 2011--2025.
+A LightGBM champion model outperforms an XGBoost strong-secondary and an LSTM
+comparison model at all forecast horizons, achieving MAE of 5.12, 6.77, and
+8.25~\textmu g/m\textsuperscript{3} at t+1, t+3, and t+7 days respectively
+(R\textsuperscript{2} = 0.841 / 0.729 / 0.600,
+AUROC = 0.992 / 0.973 / 0.946 on the 2024--2025 test set).
 SHAP analysis reveals a physically interpretable shift in dominant features:
 recent PM2.5 persistence (t+1), 14-day fire accumulation (t+3), and seasonal
-calendar position (t+7).
-The MLOps stack --- MLflow experiment tracking, FastAPI inference, Evidently
-drift monitoring, and Terraform-provisioned AWS infrastructure orchestrated by
-GitHub Actions --- constitutes a deployable, self-retraining system operating
-at approximately \$0.55/day.
-\end{abstract}
+calendar position (t+7). An ablation study quantifies the measurable
+contribution of the NASA FIRMS features (+4.3\% to +6.8\% MAE when removed),
+and alert-threshold tuning confirms the default
+50~\textmu g/m\textsuperscript{3} WHO/Thai threshold is near-optimal for t+3
+and t+7 horizons.
+The MLOps stack --- MLflow experiment tracking, FastAPI inference, a
+seasonal-aware Evidently drift monitor, and Terraform-provisioned AWS
+infrastructure orchestrated by GitHub Actions --- constitutes a deployable,
+self-retraining system operating at approximately \$0.55/day.
+
+\vspace{0.3cm}
+\noindent \textbf{Keywords:} PM2.5 forecasting, air quality, MLOps,
+LightGBM, XGBoost, LSTM, SHAP, drift monitoring, Evidently, MLflow,
+FastAPI, Terraform, AWS, NASA FIRMS, Chiang Mai.
+
+% --- Table of Contents / Lists ---
+\cleardoublepage
+\tableofcontents
+
+\cleardoublepage
+\addcontentsline{toc}{chapter}{List of Tables}
+\listoftables
+
+\cleardoublepage
+\addcontentsline{toc}{chapter}{List of Figures}
+\listoffigures
+
+\input{sections/00_abbreviations}
+
+% ------------------------------------------------------------
+% Main matter (arabic page numbers)
+% ------------------------------------------------------------
+\cleardoublepage
+\pagenumbering{arabic}
 
 \input{sections/01_introduction}
+\input{sections/02_literature_review}
 \input{sections/02_data_engineering}
 \input{sections/03_ml_development}
 \input{sections/04_mlops}
 \input{sections/05_performance_analysis}
 \input{sections/06_conclusion}
+
+% ------------------------------------------------------------
+% Back matter
+% ------------------------------------------------------------
 \input{sections/07_references}
 \input{sections/08_appendix}
+\input{sections/09_vita}
 
 \end{document}

@@ -14,7 +14,7 @@ MLflow, served via FastAPI on EC2, and monitored continuously by Evidently.
     \caption{CAAS cloud architecture on AWS. Three external APIs (air4thai,
     Open-Meteo, NASA FIRMS) feed a GitHub Actions-orchestrated ingestion layer
     (3-hourly cron) into four S3 tiers (Raw, Processed, Feature Store, Model
-    Artifacts). A single EC2~t3.micro instance hosts FastAPI, MLflow, and
+    Artifacts). A single EC2~t3.small instance hosts FastAPI, MLflow, and
     Streamlit. Evidently AI drift monitoring runs as a daily scheduled job.}
     \label{fig:architecture}
 \end{figure}
@@ -23,26 +23,37 @@ MLflow, served via FastAPI on EC2, and monitored continuously by Evidently.
 
 All training runs are logged to MLflow with:
 \begin{itemize}
-    \item Full hyperparameter sets per horizon.
+    \item Full Optuna best-trial hyperparameter sets per horizon.
     \item Validation and test metrics (MAE, RMSE, R², alert F1, AUROC).
-    \item Model artefacts (\texttt{.json} for XGBoost, \texttt{.keras} for LSTM).
-    \item Feature importance and prediction CSVs as run artefacts.
+    \item Model artefacts (\texttt{.txt}/\texttt{.pkl} for LightGBM,
+          \texttt{.json} for XGBoost, \texttt{.keras}+scaler for LSTM).
+    \item Feature importance, SHAP summaries, and prediction CSVs as run artefacts.
 \end{itemize}
 
-Three experiments are maintained: \texttt{CAAS-XGBoost} (3 runs),
-\texttt{CAAS-LSTM} (3 runs), and \texttt{CAAS-Ablation-NoFIRMS} (3 runs).
+Eight experiments are maintained across the champion/secondary/comparison families:
+\texttt{CAAS-LGBM-Optuna} (champion; 3 horizon runs), \texttt{CAAS-XGB-Optuna}
+(strong secondary; 3 runs), \texttt{CAAS-LSTM-Tuning} and
+\texttt{CAAS-LSTM-v2} (Optuna-tuned architectures), legacy
+\texttt{CAAS-XGBoost} and \texttt{CAAS-LSTM} (pre-Optuna baselines retained for
+comparison), and \texttt{CAAS-Ablation-NoFIRMS} (FIRMS-removed XGBoost baseline).
+The MLflow UI is served from the EC2 instance at port 5001 and linked directly
+from the Streamlit dashboard for reproducibility.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.85\textwidth]{fig_mlflow_runs}
-    \caption{MLflow experiment view showing CAAS-XGBoost runs.}
+    \caption{MLflow experiment view showing CAAS-LGBM-Optuna champion runs
+    alongside the XGBoost and LSTM comparison families.}
     \label{fig:mlflow_runs}
 \end{figure}
 
 \section{Model Serving}
 
-The champion XGBoost model is served via a FastAPI application
-(\texttt{04\_Scripts/serve/app.py}) exposing five endpoints:
+The FastAPI application (\texttt{04\_Scripts/serve/app.py}) loads both the
+LightGBM champion and the XGBoost strong-secondary at startup and exposes five
+endpoints. A 5-minute in-process TTL cache keyed on the feature-file modification
+time protects \texttt{/forecast} from duplicate scoring under demo-time burst
+traffic without staling when a new feature matrix lands.
 
 \begin{table}[H]
 \centering
@@ -52,7 +63,7 @@ The champion XGBoost model is served via a FastAPI application
 \textbf{Method} & \textbf{Endpoint} & \textbf{Description} \\
 \midrule
 GET  & \texttt{/health}      & Liveness check, lists loaded models \\
-GET  & \texttt{/forecast}    & Latest t+1/3/7 forecasts from most recent feature row \\
+GET  & \texttt{/forecast}    & Latest t+1/3/7 forecasts; \texttt{?model=lightgbm} (champion, default) or \texttt{?model=xgboost} (secondary) \\
 POST & \texttt{/predict}     & On-demand prediction from supplied feature values \\
 GET  & \texttt{/history}     & Recent PM2.5 history for dashboard charting \\
 GET  & \texttt{/model/info}  & Champion model metadata and test metrics \\
@@ -64,6 +75,9 @@ The service is containerised using a multi-stage Docker build that reduces
 the image size to approximately 300~MB by excluding training and monitoring
 dependencies. On EC2, the container starts automatically via a user-data
 bootstrap script that pulls the latest model artefacts from S3 at launch.
+The container is pinned to a single uvicorn worker and a 60-second healthcheck
+\texttt{start\_period} so that cold-boot model loading does not trigger a false
+restart on the 2~GB t3.small instance.
 
 A Streamlit dashboard (\texttt{dashboard.py}) provides a public-facing
 interface showing colour-coded forecast cards, a 60-day PM2.5 history chart,
@@ -84,7 +98,7 @@ Three GitHub Actions workflows implement the CI/CD pipeline:
 \begin{enumerate}
     \item Install dependencies.
     \item Lint with \texttt{ruff}.
-    \item Run 38 pytest tests covering feature schema, model inference, and API endpoints.
+    \item Run 45 pytest tests covering feature schema, model inference, alert-threshold result files, and API endpoints.
 \end{enumerate}
 
 \textbf{daily\_pipeline.yml} runs on cron (06:00 Bangkok time):
@@ -99,12 +113,19 @@ Three GitHub Actions workflows implement the CI/CD pipeline:
 \textbf{retrain.yml} triggered by drift alert or annual schedule (December~1):
 \begin{enumerate}
     \item Full data snapshot and feature rebuild.
-    \item Train new XGBoost candidate models (all three horizons).
-    \item \textbf{Validation gate:} candidate must achieve $\geq$5\% MAE improvement
-          and alert F1 $\geq$ 0.75 over a 90-day rolling window.
+    \item Train new XGBoost and LSTM candidate models (all three horizons).
+    \item Refit the F1-maximising alert thresholds per horizon
+          (\texttt{scenario\_c\_threshold.py}) against the fresh test-set
+          predictions produced by the training step.
+    \item \textbf{Validation gate (blocking):} candidate must achieve
+          $\geq$5\% MAE improvement and alert F1 $\geq$ 0.75 over a 90-day
+          rolling window.
     \item If gate passes: promote via MLflow (\texttt{Staging → Production}).
     \item Restart FastAPI on EC2 to serve the new champion.
 \end{enumerate}
+Only the validation gate can block promotion; earlier stages abort on
+infrastructure failure but do not gate model rotation. GitHub Actions minutes
+remain free because the repository is public.
 
 \begin{figure}[H]
     \centering
@@ -159,10 +180,12 @@ All AWS infrastructure is defined in Terraform (\texttt{infra/}):
           and public access block.
     \item \textbf{IAM role and policy} granting EC2 read/write access to S3
           without embedding credentials in code.
-    \item \textbf{Security group} opening ports 8000 (API), 5000 (MLflow), and 22 (SSH).
-    \item \textbf{EC2 t3.micro instance} with user-data bootstrap: installs Docker,
-          pulls the model artefacts from S3, and starts the FastAPI container.
-          FastAPI, Streamlit, and MLflow are co-located on this single instance.
+    \item \textbf{Security group} opening ports 8000 (API), 8502 (Streamlit),
+          5001 (MLflow), and 22 (SSH, IP-restricted by default).
+    \item \textbf{EC2 t3.small instance} (2 vCPU / 2~GB RAM) with user-data
+          bootstrap: installs Docker, adds a 2~GB swap file, pulls the model
+          artefacts from S3, and starts the three-container Docker Compose stack
+          (FastAPI, Streamlit, MLflow) co-located on this single instance.
 \end{itemize}
 
 Provisioning requires only \texttt{terraform init \&\& terraform apply}.
