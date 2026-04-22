@@ -1,10 +1,148 @@
 # CAAS Project — Handoff Status Log
-**Last updated:** 2026-04-21 (session 5 — CI/CD live-green)
+**Last updated:** 2026-04-22 (session 7 — final report aligned to AIT Master's Thesis Format)
 **Updated by:** Claude
 **Project:** ChiangMai Air Quality Alert System — End-to-End MLOps Pipeline
 **Course:** AT82.9002 Data Engineering and MLOps, AIT
 **Students:** Supanut Kompayak (st126055) · Shuvam Shrestha (st125975)
 **Presentation deadline:** 2026-04-24
+
+---
+
+## Session 7 (2026-04-22) — Final report aligned to AIT Master's Thesis Format (Option A)
+
+### Triggered by
+User cross-referenced `05_Reference/` and found three authorities that the final report had not yet been reconciled against: `final_rubric.md` (8 rubric sections, authoritative), `Master's Thesis Format January 2026.docx.pdf` (5-chapter thesis structure + front/back matter), and two sample capstone projects (NewsNuggets, PromptWire — both added a Literature Review, neither strictly followed the 5-chapter format). Planning pass presented three reconciliation options A/B/C; user approved **Option A** — keep rubric 8 sections, add thesis-format front/back matter and a Literature Review chapter.
+
+### What landed
+
+1. **New front-matter files** (all in `07_Final/report/sections/`):
+   - `00_declaration.tex` — Author's Declaration with dual-signature block.
+   - `00_acknowledgments.tex` — single-page acknowledgments covering instructors, data providers (PCD, Open-Meteo, NASA FIRMS), and open-source maintainers.
+   - `00_abbreviations.tex` — 50+ entries, `longtable`, covers every acronym used in the report (AUROC, FIRMS, FRP, LightGBM, MLOps, PSI, SHAP, VIIRS, etc.).
+
+2. **New Chapter 2 — Literature Review** (`02_literature_review.tex`, ~2 pages, 4 sections):
+   - 2.1 Air-Quality Forecasting for PM2.5 — WHO 2021 guideline, PCD portal, SE-Asian haze literature.
+   - 2.2 Gradient Boosting vs Deep Learning for Tabular Time Series — motivates champion/secondary/comparison hierarchy.
+   - 2.3 Satellite Fire Observations in Atmospheric Modelling — motivates FIRMS integration.
+   - 2.4 MLOps Patterns for Environmental ML — flags seasonal-aware drift as the novel contribution.
+
+3. **Chapter 1 Introduction fully restructured** into 6 thesis subsections:
+   - 1.1 Background, 1.2 Problem Statement, 1.3 Research Questions (4 RQs),
+     1.4 Objectives (6 mapped to RQs), 1.5 Scope and Contributions,
+     1.6 Organisation of the Report (chapter roadmap with cross-refs).
+
+4. **Chapter 7 Conclusion restructured** into 3 thesis-style subsections:
+   - 7.1 Conclusions (5 findings mapped back to RQs).
+   - 7.2 Recommendations (operational + educational adoption).
+   - 7.3 Future Research Directions (6 items + Limitations).
+
+5. **New VITA page** (`09_vita.tex`) — formal thesis-format author bios for both Supanut (st126055) and Shuvam (st125975), including CAAS-specific contribution attribution.
+
+6. **Main `final_report_CAAS.tex` rewired**:
+   - `\onehalfspacing` (1.5 line spacing per thesis format).
+   - Roman pagination (i–ix) for front matter; Arabic (1–41) for main matter.
+   - Order: Title → Declaration → Acknowledgments → Abstract (with Keywords) → Table of Contents → List of Tables → List of Figures → List of Abbreviations → 7 numbered chapters → References → Appendix A (Reproduction Guide) → Appendix B (Full Metric Tables) → VITA.
+
+### Result
+
+Compiled clean with `pdflatex` ×3. Final PDF: **52 pages** (up from 33), 2.2 MB.
+
+Verified TOC structure:
+```
+Front matter (roman):  Declaration (i) · Acknowledgments (ii) · Abstract (iii) ·
+                       List of Tables (vii) · List of Figures (viii) ·
+                       List of Abbreviations (ix)
+Main matter (arabic):  Ch1 Introduction (1) · Ch2 Literature Review (5) ·
+                       Ch3 Data Engineering (8) · Ch4 ML Model Development (11) ·
+                       Ch5 MLOps Implementation (18) ·
+                       Ch6 Performance Analysis (24) ·
+                       Ch7 Conclusion and Recommendations (27)
+Back matter:           References (31) · Appendix A Reproduction Guide (34) ·
+                       Appendix B Full Metric Tables (38) · VITA (41)
+```
+
+**All 8 rubric sections are preserved** (Intro, DE, ML, MLOps, Performance Analysis, Conclusion, References, Appendix); Literature Review is an additive thesis-format chapter, not a replacement.
+
+### Files changed this session
+- `07_Final/report/final_report_CAAS.tex` — front/back-matter wiring + 1.5 spacing
+- `07_Final/report/sections/00_declaration.tex` — NEW
+- `07_Final/report/sections/00_acknowledgments.tex` — NEW
+- `07_Final/report/sections/00_abbreviations.tex` — NEW
+- `07_Final/report/sections/02_literature_review.tex` — NEW
+- `07_Final/report/sections/01_introduction.tex` — restructured into 6 thesis subsections
+- `07_Final/report/sections/06_conclusion.tex` — restructured into 3 thesis subsections + Limitations
+- `07_Final/report/sections/09_vita.tex` — NEW
+- `07_Final/report/final_report_CAAS.pdf` — recompiled (52 pages)
+
+### Remaining work toward 2026-04-24
+1. PPTX slide deck from `07_Final/slides/SLIDES_OUTLINE.md` (14 slides).
+2. Video demo (~10 min).
+3. Rehearsal.
+4. Post-presentation: `terraform destroy`, tighten SSH SG back to personal CIDR.
+
+---
+
+## Session 6 (2026-04-22) — EC2 stability crisis + dashboard polish + MLflow sync
+
+### Triggered by
+Perf review the evening of 2026-04-21 found caas-api in a crash loop on EC2 t3.small with load avg 13 on 2 vCPUs, 29 MiB available RAM, and 0 swap. By morning the box was fully unreachable (SSH banner timeout, all HTTP ports timing out). OOM → kernel thrash → instance effectively dead two days before submission.
+
+### A — Recovery + permanent memory fixes
+
+1. **Soft reboot failed** (OS hung — `aws ec2 reboot-instances` queues the request but the guest can't service it). Force stop + start cycle instead.
+2. **Public IP changed** `54.255.152.224` → **`13.250.17.6`** (no Elastic IP). Updated EC2 `.env` `MLFLOW_PUBLIC_URL`, memory files, and all references.
+3. **SSH SG rule**: ISP was rotating my residential IP every few hours (`27.145.5.100` → `49.237.166.200` → `49.237.7.42`). Widened the SSH CIDR to `0.0.0.0/0` temporarily (key-auth only, no password). Tighten back before `terraform destroy` on 2026-04-24.
+4. **2 GB swap file** added permanently on EC2 (`fallocate` + `mkswap` + `swapon` + `/etc/fstab` entry).
+5. **Worker counts cut 1×** in both images:
+   - [`Dockerfile`](../Dockerfile#L73-L76): uvicorn `--workers 2` → `--workers 1` (was loading all 6 models twice, ~200 MB doubled).
+   - [`Dockerfile.mlflow`](../Dockerfile.mlflow#L13-L17): `mlflow server --workers 1` (default is 4 gunicorn workers, ~300 MB for a read-only UI).
+6. **Healthcheck start period** `15s` → `60s` in [`docker-compose.yml`](../docker-compose.yml) — cold boot loads 6 models sequentially, the old 15 s window was marking the API unhealthy mid-init.
+7. Commit: `45924b0` — `perf(serve,mlflow): cut workers 1x + extend healthcheck start-period`.
+
+**Post-fix snapshot:** API Healthy (not crash loop), mem 1.2 GiB used / 557 MiB available / swap 1 MiB used. All 4 endpoints green — `/health` 200, `/forecast` returns t+1=29 / t+3=34.3 / t+7=31.3 µg/m³ with `data_age_days=1`, dashboard 200 in 162 ms, MLflow 200 in 130 ms.
+
+### B — Dashboard v3 polish (landed evening of 2026-04-21, listed here for completeness)
+
+- **Freshness pill badge** in sidebar — derived from `/forecast` `data_age_days` field (new). Green = today, amber = 1 day, red = stale.
+- **Header row**: left-aligned title + right-aligned timestamp stamp (`HH:MM · DD Mon YYYY` in Asia/Bangkok).
+- **Public tab**: 4-card grid (Today observed + t+1 / t+3 / t+7), subtle box-shadow, no gradients. Data-provenance caption about Open-Meteo CAMS backfill (n=92, MAE 5.39, r=0.531, bias −3.56 µg/m³) so the grader can see we're honest about the backfill source.
+- **MLflow link button** in sidebar, gated on `MLFLOW_PUBLIC_URL` env (lets the grader jump straight from the dashboard to the experiment tracking UI).
+- **Model Insights tab restructure**: removed the LGBM/XGB radio (LightGBM is the champion, XGBoost metrics moved to an expander). Split into `### Performance` / `### Data drift` / `### Explainability` sub-sections.
+- **New `data_age_days` field** in [`04_Scripts/serve/app.py`](../04_Scripts/serve/app.py) `/forecast` response, computed in BKK timezone.
+- Commit: `bf46f46` — `feat(dashboard): polish UI for presentation — freshness, today card, sections`.
+
+### C — MLflow experiment runs exposed on live UI
+
+Until today the live MLflow at :5001 was empty because `mlruns/` is in `.gitignore` and the EC2 bootstrap didn't sync it from anywhere. Grader clicking the MLflow tab would have seen "No Experiments Exist" — same signal as "we have no tracking history."
+
+Fixed:
+1. `rsync -az` local `mlruns/` (109 MB, 424 `meta.yaml`, 8 experiments) → `ubuntu@13.250.17.6:/home/ubuntu/caas/mlruns/`. Required `sudo chown -R ubuntu:ubuntu /home/ubuntu/caas/mlruns` first because cloud-init had cloned the repo as root.
+2. Python-based path rewrite (two passes) on all `meta.yaml` files — old `artifact_uri` and `artifact_location` pointed at `/Users/supanut.k/.../mlruns/` (sometimes as `04_Scripts/../mlruns/`). Rewrote to `file:///mlflow/mlruns/` (the container mount point). 295 run-level + 129 experiment-level files rewritten. Verified zero `/Users/supanut.k/` remaining.
+3. `docker compose restart mlflow` — UI now exposes all 8 experiments: `CAAS-LGBM-Optuna` (champion), `CAAS-XGB-Optuna`, `CAAS-Ablation-NoFIRMS`, `CAAS-LSTM`, `CAAS-LSTM-v2`, `CAAS-LSTM-Tuning`, `CAAS-XGBoost`, `Default`.
+
+**Caveat:** path rewrite covered only `meta.yaml`. A few runs may still have absolute paths embedded in `params/`, `tags/`, or artifact dirs. Metrics and params render correctly; clicking individual artifact files may 404. Good enough for presentation.
+
+### Files changed this session
+- `Dockerfile` — uvicorn workers + healthcheck
+- `Dockerfile.mlflow` — gunicorn workers
+- `docker-compose.yml` — healthcheck start_period
+- (Dashboard/API changes committed last night in `bf46f46`)
+- EC2: `/swapfile` + `/etc/fstab` entry, SSH SG rule widened, `.env` `MLFLOW_PUBLIC_URL` updated, 424 `meta.yaml` rewritten
+
+### Live URLs (new IP)
+| Service | URL |
+|---|---|
+| FastAPI | http://13.250.17.6:8000 (+ `/docs`) |
+| Streamlit dashboard | http://13.250.17.6:8502 |
+| MLflow UI | http://13.250.17.6:5001 (all 8 experiments visible) |
+
+### Outstanding for 2026-04-24 presentation
+
+1. **Final report metric refresh** — PDF still frames XGBoost as champion; must reflect LightGBM champion, FIRMS contribution story, Open-Meteo CAMS backfill caveat.
+2. **PPTX slides** — 14 slides from `07_Final/slides/SLIDES_OUTLINE.md`, still 0 built.
+3. **Demo video** — `07_Final/video/` empty.
+4. **Batch A/B housekeeping** (in-flight this session): `FINALSUBMIT/` cleanup, `.env.example` refresh, `02_Presentation/` empty folder, server-side `/forecast` TTL cache, add `scenario_c_threshold.py` to `daily_pipeline.yml`, delete `04_Scripts/lstm_retrain.log` from git.
+5. `terraform destroy` after presentation.
 
 ---
 

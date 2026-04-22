@@ -75,6 +75,13 @@ jobs:
         run: python 04_Scripts/train_lstm.py
         continue-on-error: true    # LSTM failure doesn't block XGBoost promotion
 
+      - name: "[3/6] model-train — Refresh alert thresholds (Scenario C)"
+        # Uses the fresh xgboost_{horizon}_test_predictions.csv that train_xgboost.py
+        # just emitted to refit the F1-maximising alert threshold per horizon.
+        # Writes 03_Data/results/scenario_c_summary.json + PR-curve figures that
+        # the final report and serve/app.py alert gate both consume.
+        run: python 04_Scripts/scenario_c_threshold.py
+
       # ── Stage 4: VALIDATION GATE (BLOCKING) ────────────
       - name: "[4/6] validation-gate — Compare candidate vs champion"
         id: validation_gate

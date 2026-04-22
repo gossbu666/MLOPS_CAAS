@@ -19,6 +19,7 @@ Usage (production on EC2):
 import os
 import json
 import glob
+import time
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
@@ -51,6 +52,12 @@ FEATURES    = os.path.join(DATA_DIR, "processed", "features.csv")
 PM25_CSV    = os.path.join(DATA_DIR, "processed", "pm25_consolidated.csv")
 
 ALERT_THRESHOLD = 50.0
+
+# /forecast is deterministic per (model, features.csv snapshot). Features refresh
+# 1×/day via daily_pipeline — cache protects against demo-time burst traffic on
+# a t3.small without paying to re-score 3 horizons per request.
+_FORECAST_CACHE: dict[str, tuple[float, float, dict]] = {}
+_FORECAST_TTL_S = 300.0
 
 # ── App setup ──────────────────────────────────────────────
 app = FastAPI(
@@ -193,6 +200,17 @@ def get_forecast(model: str = "lightgbm"):
     if not source:
         raise HTTPException(503, f"No {model} models loaded.")
 
+    try:
+        features_mtime = os.path.getmtime(FEATURES)
+    except OSError:
+        raise HTTPException(503, "Feature file not found. Run build_features.py first.")
+
+    cached = _FORECAST_CACHE.get(model)
+    if cached is not None:
+        cached_mtime, cached_expiry, cached_payload = cached
+        if cached_mtime == features_mtime and time.monotonic() < cached_expiry:
+            return cached_payload
+
     latest = get_latest_features()
     if latest is None:
         raise HTTPException(503, "Feature file not found. Run build_features.py first.")
@@ -203,7 +221,7 @@ def get_forecast(model: str = "lightgbm"):
     utc_iso, bkk_str = _now_iso_pair()
     now_bkk = datetime.now(timezone.utc).astimezone(BKK)
     data_age_days = (now_bkk.date() - forecast_date.date()).days
-    return {
+    payload = {
         "station":            "Chiang Mai (35T / 36T)",
         "as_of_date":         str(forecast_date.date()),
         "data_age_days":      data_age_days,
@@ -212,6 +230,8 @@ def get_forecast(model: str = "lightgbm"):
         "generated_at":       utc_iso,
         "generated_at_local": bkk_str,
     }
+    _FORECAST_CACHE[model] = (features_mtime, time.monotonic() + _FORECAST_TTL_S, payload)
+    return payload
 
 @app.get("/history")
 def get_history(days: int = 30):
