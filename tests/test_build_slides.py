@@ -24,3 +24,11 @@ def built_deck() -> Presentation:
 def test_file_is_generated(built_deck):
     """The output .pptx exists and is non-trivially sized."""
     assert OUTPUT.stat().st_size > 10_000, "pptx file is suspiciously small"
+
+
+def test_verify_numbers_passes_against_current_jsons():
+    """verify_numbers() must not raise against the current results/ JSONs."""
+    sys.path.insert(0, str(PROJECT_ROOT / "04_Scripts"))
+    from build_slides import verify_numbers  # noqa: E402
+
+    verify_numbers()  # raises on mismatch — test fails if it does
