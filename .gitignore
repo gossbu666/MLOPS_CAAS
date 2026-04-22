@@ -63,3 +63,9 @@ infra/terraform.tfvars
 .vscode/
 .idea/
 .claude/
+
+# Office app lock files (Word/PowerPoint)
+~$*
+
+# Slide preview renders (regenerable from pptx)
+07_Final/slides/preview/
