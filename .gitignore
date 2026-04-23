@@ -69,3 +69,7 @@ infra/terraform.tfvars
 
 # Slide preview renders (regenerable from pptx)
 07_Final/slides/preview/
+
+# HTTP cache (openmeteo-requests + requests-cache)
+.cache.sqlite
+*.cache.sqlite

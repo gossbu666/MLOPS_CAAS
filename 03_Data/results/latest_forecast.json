@@ -1,29 +1,29 @@
 {
   "station": "Chiang Mai (35T)",
   "forecast_for": "2026-04-21",
-  "generated_at": "2026-04-21T11:18:30.267388Z",
-  "generated_at_local": "2026-04-21 18:18:30 +07",
-  "data_age_days": 0,
-  "data_freshness_minutes": 1098,
+  "generated_at": "2026-04-23T01:10:23.074311Z",
+  "generated_at_local": "2026-04-23 08:10:23 +07",
+  "data_age_days": 2,
+  "data_freshness_minutes": 3370,
   "latest_pm25_date": "2026-04-21",
   "forecasts": {
     "t1": {
       "horizon_days": 1,
-      "pm25_forecast": 29.26,
+      "pm25_forecast": 41.92,
       "alert": false,
-      "alert_level": "Unhealthy for Sensitive Groups"
+      "alert_level": "Unhealthy"
     },
     "t3": {
       "horizon_days": 3,
-      "pm25_forecast": 32.86,
+      "pm25_forecast": 42.63,
       "alert": false,
-      "alert_level": "Unhealthy for Sensitive Groups"
+      "alert_level": "Unhealthy"
     },
     "t7": {
       "horizon_days": 7,
-      "pm25_forecast": 36.06,
+      "pm25_forecast": 23.87,
       "alert": false,
-      "alert_level": "Unhealthy for Sensitive Groups"
+      "alert_level": "Moderate"
     }
   }
 }
