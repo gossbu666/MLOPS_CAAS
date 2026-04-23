@@ -1276,7 +1276,7 @@ def slide_14_conclusion(prs):
     # closing line + Q&A
     rect(s, Inches(0.5), Inches(6.6), Inches(12.3), Inches(0.55), fill=ACCENT)
     add_text_box(s, left=Inches(0.7), top=Inches(6.7), width=Inches(12.0), height=Inches(0.4),
-                 text="THANK YOU  ·  QUESTIONS?  ·  github.com/supanut-k/caas",
+                 text="THANK YOU  ·  QUESTIONS?  ·  github.com/gossbu666/MLOPS_CAAS",
                  size_pt=16, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 
     slide_number_footer(s, 14)

@@ -151,7 +151,7 @@ When the user asks for a review or audit, pick the persona(s) that match the ask
 - **`.env` at repo root (413 bytes)** — verify it's in `.gitignore` and contains no real secrets committed to history.
 - `infra/main.tf` line 183: `allowed_ssh_cidr` — check `infra/variables.tf` default; anything other than your IP/32 is a red flag.
 - IAM policy (`main.tf` ~line 116): `s3:DeleteObject` is granted to the EC2 role — consider least-privilege (list+get+put only).
-- EC2 `user_data` clones `https://github.com/supanut-k/caas.git` — repo must exist + be public (or replace with authenticated clone) for Terraform apply to succeed.
+- EC2 `user_data` clones `https://github.com/gossbu666/MLOPS_CAAS.git` — repo must exist + be public (or replace with authenticated clone) for Terraform apply to succeed.
 - Security groups open API (8000), MLflow (5000), SSH (22) to `0.0.0.0/0` for API/MLflow — fine for demo, risky for prod.
 - Reproducibility: `tensorflow==2.17.0` pinned but dev machine uses **tf-metal** on Apple M4 — grader on Linux/Windows needs plain `tensorflow` with matching version; note this in the appendix.
 - `python_version: "3.11"` in workflows, Dockerfile, and venv — consistent ✓.
