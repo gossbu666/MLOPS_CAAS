@@ -20,7 +20,7 @@ from pathlib import Path
 LAT = 18.7883
 LON = 98.9853
 START_DATE = "2011-01-01"
-END_DATE   = pd.Timestamp.now(tz="Asia/Bangkok").strftime("%Y-%m-%d")
+END_DATE   = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d")
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = BASE_DIR / "03_Data" / "processed" / "weather_consolidated.csv"
