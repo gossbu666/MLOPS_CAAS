@@ -20,6 +20,9 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import xgboost as xgb
+from dotenv import load_dotenv
+
+load_dotenv()
 
 BKK = ZoneInfo("Asia/Bangkok")
 
@@ -156,6 +159,15 @@ def main():
 
     history_df.to_csv(HISTORY_CSV, index=False)
     print(f"✅  History appended → {HISTORY_CSV}")
+
+    # ── Notify alert channels (only when a horizon fires) ────
+    if any(fc["alert"] for fc in forecasts.values()):
+        try:
+            from alert_channels import send_discord_alert
+            if send_discord_alert(output):
+                print("📣  Discord alert dispatched")
+        except Exception as exc:
+            print(f"⚠️   Alert channel error (non-fatal): {exc}")
 
 
 if __name__ == "__main__":
