@@ -1,10 +1,48 @@
 # CAAS Project — Handoff Status Log
-**Last updated:** 2026-04-22 (session 7 — final report aligned to AIT Master's Thesis Format)
+**Last updated:** 2026-04-25 (session 8 — defense complete, project closed, AWS torn down)
 **Updated by:** Claude
 **Project:** ChiangMai Air Quality Alert System — End-to-End MLOps Pipeline
 **Course:** AT82.9002 Data Engineering and MLOps, AIT
 **Students:** Supanut Kompayak (st126055) · Shuvam Shrestha (st125975)
-**Presentation deadline:** 2026-04-24
+**Status:** ✅ DELIVERED — defense presented 2026-04-24, submission complete, infra torn down
+
+---
+
+## Session 8 (2026-04-24 → 2026-04-25) — Defense, submission, project closure
+
+### What happened
+- **Defense delivered (2026-04-24)** — 14-slide deck `CAAS_final_Rev1_final.pdf`, live demo using `13.250.17.6:8502` (Streamlit) + `:8000/forecast` (FastAPI) + `:5001` (MLflow) + GitHub Actions UI.
+- **Final submission complete** — report PDF, slide PDF + PPTX, and demo video link delivered to instructor.
+- **Discord alert channel added** during defense prep — `04_Scripts/alert_channels/discord.py` posts a colour-coded embed via webhook when any horizon crosses Scenario-C threshold. Wired into `run_inference.py`; secret injected via GH Actions.
+
+### Bugs caught + fixed during defense window (live MLOps story, useful for Q&A)
+- **`fetch_weather.py` END_DATE timezone edge case** (`commit 0950cfc`) — pinned to Asia/Bangkok which ticks past UTC midnight first; switched to UTC since Open-Meteo archive's allowed range tracks UTC. Two scheduled runs at 19:00 + 21:40 UTC failed before the fix; subsequent runs green.
+- **PM2.5 data gap on Apr 22** (`commit 81de4b6`) — `fetch_pm25_live.py` only grabs single latest reading; air4thai missed Apr 22, which dropped Apr 23/24 feature rows via `pm25_lag1` dropna and stalled the dashboard 2 days behind. Backfilled from Open-Meteo CAMS satellite product.
+
+### Project closure (2026-04-25)
+- **`terraform destroy`** torn down all 16 AWS resources (S3 bucket, EC2 t3.small, IAM role/policy/instance-profile, security group, all S3 lifecycle objects).
+- Total live cost ≈ **$2.20** (~4 days × $0.55/day) — well within demo budget.
+- **Discord webhook deactivated** (URL had been visible in chat history; rotation/delete done in Discord UI).
+- Local repo retains full state: 100 MB MLflow runs, all model artifacts in `03_Data/models/`, all CSVs in `03_Data/processed/`, all summaries in `03_Data/results/`.
+
+### Final deliverables (in `FINALSUBMIT/`)
+- `final_report_CAAS.pdf` — 52-page AIT Master's Thesis format
+- `CAAS_final_Rev1.pdf` + `.pptx` — 14-slide defense deck (Variant D dashboard aesthetic)
+- `video_demo_link.txt` — recorded walkthrough
+
+### Future work (documented but not built)
+1. **EC2 cron `aws s3 sync`** every 3h — eliminates the container-baked-data staleness pattern we caught at defense
+2. **Auto-backfill in `fetch_pm25_live.py`** — detect gaps vs. previous day, fall back to CAMS automatically
+3. **Great Expectations / Pandera** — explicit value validation layer; current setup relies on fail-fast + drift monitor only
+4. **HITL trigger thresholds** — pause auto-promote when challenger improvement > 15% (overfitting signal) or PSI > 0.4 (data corruption signal)
+5. **MLflow on RDS / S3 artifact root** — when EC2 disk fills around year ~3 of operation
+6. **Spot instances for retrain.yml** — ~70% compute cost reduction for the only burst workload
+7. **LINE Messaging API alert adapter** — Discord works for dev demo; production for Thai users would use LINE OA or SMS
+
+### Repo state at closure
+- Branch `main` at commit `5e84710` (Discord webhook integration) plus this session's commits
+- All workflows still defined in `.github/workflows/` (not deleted) — repo can be redeployed via `terraform apply` if needed
+- GitHub Secrets remain set; rotate or remove from repo settings if repo is archived
 
 ---
 
